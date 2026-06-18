@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class JobSearchController {
 
     private static final String USER_ID_ATTRIBUTE = "USER_ID";
+    private static final String X_USER_ID_HEADER = "X-User-Id";
 
     private final UserProfileClient userProfileClient;
     private final JobServiceClient jobServiceClient;
@@ -29,8 +31,13 @@ public class JobSearchController {
 
     @PostMapping("/search")
     public ResponseEntity<String> searchJobs(HttpServletRequest request,
+                                              @RequestHeader(name = X_USER_ID_HEADER, required = false) String xUserId,
                                               @RequestBody(required = false) JobSearchRequest searchRequest) {
+        // Try JWT-filter-set attribute first, then X-User-Id header (demo mode)
         String userId = (String) request.getAttribute(USER_ID_ATTRIBUTE);
+        if (userId == null || userId.trim().isEmpty()) {
+            userId = xUserId;
+        }
 
         if (userId == null || userId.trim().isEmpty()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)

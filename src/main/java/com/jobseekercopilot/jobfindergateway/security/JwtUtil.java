@@ -30,7 +30,7 @@ public class JwtUtil {
     }
 
     public String extractUserId(Claims claims) {
-        return claims.get("USER_ID", String.class);
+        return claims.getSubject();
     }
 
     public boolean isTokenValid(String token) {

@@ -24,13 +24,15 @@ public class JobServiceClient {
         this.jobServiceUrl = jobServiceUrl;
     }
 
-    public ResponseEntity<String> searchJobs(String userId, UserProfile userProfile) {
+    /**
+     * Search jobs using a direct JobSearchRequest from the frontend.
+     */
+    public ResponseEntity<String> searchJobs(String userId, JobSearchRequest request) {
         String url = jobServiceUrl + "/api/jobs/search";
 
         HttpHeaders headers = new HttpHeaders();
         headers.set(X_USER_ID_HEADER, userId);
 
-        JobSearchRequest request = transformProfileToRequest(userProfile);
         HttpEntity<JobSearchRequest> entity = new HttpEntity<>(request, headers);
 
         try {
@@ -43,6 +45,14 @@ public class JobServiceClient {
         } catch (Exception e) {
             throw new ServiceUnavailableException("Job search service is currently unavailable", e);
         }
+    }
+
+    /**
+     * Search jobs using a UserProfile (convert profile to JobSearchRequest).
+     */
+    public ResponseEntity<String> searchJobsFromProfile(String userId, UserProfile userProfile) {
+        JobSearchRequest request = transformProfileToRequest(userProfile);
+        return searchJobs(userId, request);
     }
 
     private JobSearchRequest transformProfileToRequest(UserProfile profile) {

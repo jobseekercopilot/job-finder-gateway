@@ -6,6 +6,6 @@ jwt:
 
 services:
   user-profile:
-    url: ${USER_PROFILE_SERVICE_URL:http://localhost:8081}
+    url: ${USER_PROFILE_SERVICE_URL:http://user-profile-service:8085}
   job-service:
-    url: ${JOB_SERVICE_URL:http://localhost:8082}
+    url: ${JOB_SERVICE_URL:http://job-service:8086}

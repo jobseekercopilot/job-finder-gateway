@@ -1,0 +1,16 @@
+com/jobseekercopilot/jobfindergateway/client/UserProfileClient$ServiceUnavailableException.class
+com/jobseekercopilot/jobfindergateway/controller/JobSearchController.class
+com/jobseekercopilot/jobfindergateway/JobFinderGatewayApplication.class
+com/jobseekercopilot/jobfindergateway/security/JwtTokenFilter.class
+com/jobseekercopilot/jobfindergateway/model/dto/JobSearchRequest$WorkPreferences.class
+com/jobseekercopilot/jobfindergateway/client/JobServiceClient$ServiceUnavailableException.class
+com/jobseekercopilot/jobfindergateway/model/dto/JobSearchRequest$Aspirations.class
+com/jobseekercopilot/jobfindergateway/model/dto/JobSearchRequest$SalaryExpectation.class
+com/jobseekercopilot/jobfindergateway/client/UserProfileClient.class
+com/jobseekercopilot/jobfindergateway/config/SecurityConfig.class
+com/jobseekercopilot/jobfindergateway/config/RestTemplateConfig.class
+com/jobseekercopilot/jobfindergateway/model/dto/JobSearchRequest.class
+com/jobseekercopilot/jobfindergateway/model/dto/UserProfile.class
+com/jobseekercopilot/jobfindergateway/util/JsonParser.class
+com/jobseekercopilot/jobfindergateway/security/JwtUtil.class
+com/jobseekercopilot/jobfindergateway/client/JobServiceClient.class

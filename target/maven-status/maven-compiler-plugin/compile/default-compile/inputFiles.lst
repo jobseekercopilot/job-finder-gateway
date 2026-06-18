@@ -1,0 +1,11 @@
+/home/bernard-mcgeever/Workspace/give-it-a-bash/job-seeker-copilot/job-finder-gateway/src/main/java/com/jobseekercopilot/jobfindergateway/security/JwtUtil.java
+/home/bernard-mcgeever/Workspace/give-it-a-bash/job-seeker-copilot/job-finder-gateway/src/main/java/com/jobseekercopilot/jobfindergateway/client/UserProfileClient.java
+/home/bernard-mcgeever/Workspace/give-it-a-bash/job-seeker-copilot/job-finder-gateway/src/main/java/com/jobseekercopilot/jobfindergateway/security/JwtTokenFilter.java
+/home/bernard-mcgeever/Workspace/give-it-a-bash/job-seeker-copilot/job-finder-gateway/src/main/java/com/jobseekercopilot/jobfindergateway/config/RestTemplateConfig.java
+/home/bernard-mcgeever/Workspace/give-it-a-bash/job-seeker-copilot/job-finder-gateway/src/main/java/com/jobseekercopilot/jobfindergateway/JobFinderGatewayApplication.java
+/home/bernard-mcgeever/Workspace/give-it-a-bash/job-seeker-copilot/job-finder-gateway/src/main/java/com/jobseekercopilot/jobfindergateway/model/dto/JobSearchRequest.java
+/home/bernard-mcgeever/Workspace/give-it-a-bash/job-seeker-copilot/job-finder-gateway/src/main/java/com/jobseekercopilot/jobfindergateway/model/dto/UserProfile.java
+/home/bernard-mcgeever/Workspace/give-it-a-bash/job-seeker-copilot/job-finder-gateway/src/main/java/com/jobseekercopilot/jobfindergateway/util/JsonParser.java
+/home/bernard-mcgeever/Workspace/give-it-a-bash/job-seeker-copilot/job-finder-gateway/src/main/java/com/jobseekercopilot/jobfindergateway/client/JobServiceClient.java
+/home/bernard-mcgeever/Workspace/give-it-a-bash/job-seeker-copilot/job-finder-gateway/src/main/java/com/jobseekercopilot/jobfindergateway/controller/JobSearchController.java
+/home/bernard-mcgeever/Workspace/give-it-a-bash/job-seeker-copilot/job-finder-gateway/src/main/java/com/jobseekercopilot/jobfindergateway/config/SecurityConfig.java

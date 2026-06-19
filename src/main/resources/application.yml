@@ -1,0 +1,11 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+jwt:
+  secret: ${JWT_SECRET}
+
+services:
+  user-profile:
+    url: ${USER_PROFILE_SERVICE_URL:http://user-profile-service:8085}
+  job-service:
+    url: ${JOB_SERVICE_URL:http://job-service:8086}

@@ -11,8 +11,11 @@ management:
       exposure:
         include: health
 
-jwt:
-  secret: ${JWT_SECRET}
+job-finder:
+  security:
+    jwk-set-uri: ${AUTH_JWKS_URI:http://authentication-service:8084/.well-known/jwks.json}
+    issuer: ${JOB_FINDER_JWT_ISSUER:job-seeker-copilot-authentication}
+    audience: ${JOB_FINDER_JWT_AUDIENCE:job-seeker-copilot-services}
 
 services:
   user-profile:

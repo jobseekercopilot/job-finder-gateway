@@ -1,21 +1,20 @@
 package com.jobseekercopilot.jobfindergateway.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.jobseekercopilot.generated.userprofileservice.api.UserProfilesApi;
+import com.jobseekercopilot.generated.jobservice.api.JobSearchApi;
+import com.jobseekercopilot.generated.jobservice.model.ReedJobSearchResponse;
+import com.jobseekercopilot.jobfindergateway.client.UserProfileClientFactory;
 import com.jobseekercopilot.jobfindergateway.model.dto.ApplicationRecordResponse;
 import com.jobseekercopilot.jobfindergateway.model.dto.JobSearchRequest;
-import com.jobseekercopilot.jobfindergateway.model.dto.JobSearchResponse;
 import com.jobseekercopilot.jobfindergateway.model.dto.UpdateApplicationStatusRequest;
 import com.jobseekercopilot.jobfindergateway.model.dto.WithdrawGeneratedApplicationResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -30,12 +29,13 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -49,26 +49,24 @@ import java.util.UUID;
 public class JobSearchController {
 
     private static final Logger log = LoggerFactory.getLogger(JobSearchController.class);
-    private static final String USER_ID_ATTRIBUTE = "USER_ID";
-    private static final String X_USER_ID_HEADER = "X-User-Id";
 
-    private final UserProfilesApi userProfilesApi;
+    private final UserProfileClientFactory userProfileClientFactory;
+    private final JobSearchApi jobSearchApi;
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate;
-    private final String jobServiceBaseUrl;
     private final String applicationTrackerBaseUrl;
     private final String documentStoreBaseUrl;
 
-    public JobSearchController(UserProfilesApi userProfilesApi,
+    public JobSearchController(UserProfileClientFactory userProfileClientFactory,
+                               JobSearchApi jobSearchApi,
                                ObjectMapper objectMapper,
                                RestTemplate restTemplate,
-                               @Value("${services.job-service.url}") String jobServiceBaseUrl,
                                @Value("${services.application-tracker.url}") String applicationTrackerBaseUrl,
                                @Value("${services.document-store.url:http://document-store-service:8089}") String documentStoreBaseUrl) {
-        this.userProfilesApi = userProfilesApi;
+        this.userProfileClientFactory = userProfileClientFactory;
+        this.jobSearchApi = jobSearchApi;
         this.objectMapper = objectMapper;
         this.restTemplate = restTemplate;
-        this.jobServiceBaseUrl = jobServiceBaseUrl;
         this.applicationTrackerBaseUrl = applicationTrackerBaseUrl;
         this.documentStoreBaseUrl = documentStoreBaseUrl;
     }
@@ -77,7 +75,7 @@ public class JobSearchController {
     @Operation(summary = "Search jobs", description = "Searches for jobs using either a provided search request or the user's profile preferences.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Search completed successfully",
-                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = JobSearchResponse.class))),
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ReedJobSearchResponse.class))),
             @ApiResponse(responseCode = "400", description = "Invalid request or incomplete user profile",
                     content = @Content(mediaType = "application/json")),
             @ApiResponse(responseCode = "401", description = "Missing or invalid user ID",
@@ -86,24 +84,12 @@ public class JobSearchController {
                     content = @Content(mediaType = "application/json"))
     })
     @Tag(name = "Job Search")
-    public ResponseEntity<?> searchJobs(HttpServletRequest request,
-            @Parameter(in = ParameterIn.HEADER, name = "X-User-Id", description = "User ID for authentication (optional if JWT filter sets USER_ID attribute)", required = false, example = "user-123")
-            @RequestHeader(name = X_USER_ID_HEADER, required = false) String xUserId,
+    public ResponseEntity<?> searchJobs(
+            @AuthenticationPrincipal Jwt accessToken,
             @Parameter(description = "Job search request parameters (optional - if omitted, uses user profile preferences)", required = false)
             @RequestBody(required = false) JobSearchRequest searchRequest) {
         long startedAt = System.nanoTime();
-        // Try JWT-filter-set attribute first, then X-User-Id header (demo mode)
-        String userId = (String) request.getAttribute(USER_ID_ATTRIBUTE);
-        if (userId == null || userId.trim().isEmpty()) {
-            userId = xUserId;
-        }
-
-        if (userId == null || userId.trim().isEmpty()) {
-            log.warn("job-finder-gateway job search rejected reason=MissingUserId durationMs={}",
-                    (System.nanoTime() - startedAt) / 1_000_000);
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body("{\"error\":\"UNAUTHORIZED\",\"message\":\"Missing or invalid user ID\"}");
-        }
+        String userId = accessToken.getSubject();
         log.info("job-finder-gateway received job search userId={} requestSource={}",
                 userId,
                 searchRequest == null ? "PROFILE" : "REQUEST_BODY");
@@ -114,7 +100,9 @@ public class JobSearchController {
             try {
                 long profileStartedAt = System.nanoTime();
                 log.info("Calling user-profile-service for job search userId={}", userId);
-                userProfile = userProfilesApi.getMyProfile(userId);
+                userProfile = userProfileClientFactory
+                        .authenticated(accessToken.getTokenValue())
+                        .getMyProfile();
                 log.info("user-profile-service returned profile for job search userId={} durationMs={}",
                         userId,
                         (System.nanoTime() - profileStartedAt) / 1_000_000);
@@ -147,7 +135,8 @@ public class JobSearchController {
             }
 
             try {
-                ResponseEntity<JobSearchResponse> response = searchDownstream(userId, fromProfile(userProfile));
+                ResponseEntity<ReedJobSearchResponse> response =
+                        searchDownstream(userId, fromProfile(userProfile));
                 log.info("job-finder-gateway job search completed userId={} finalCount={} durationMs={}",
                         userId,
                         response.getBody() == null ? null : response.getBody().getTotalResults(),
@@ -166,7 +155,7 @@ public class JobSearchController {
 
         // Use the request body from the frontend (preferred flow)
         try {
-            ResponseEntity<JobSearchResponse> response = searchDownstream(userId, searchRequest);
+            ResponseEntity<ReedJobSearchResponse> response = searchDownstream(userId, searchRequest);
             log.info("job-finder-gateway job search completed userId={} finalCount={} durationMs={}",
                     userId,
                     response.getBody() == null ? null : response.getBody().getTotalResults(),
@@ -183,28 +172,24 @@ public class JobSearchController {
         }
     }
 
-    private ResponseEntity<JobSearchResponse> searchDownstream(
+    private ResponseEntity<ReedJobSearchResponse> searchDownstream(
             String userId,
-            Object request) {
+            JobSearchRequest request) {
         long startedAt = System.nanoTime();
-        int roles = request instanceof JobSearchRequest jobSearchRequest
-                && jobSearchRequest.getAspirations() != null
-                && jobSearchRequest.getAspirations().getDesiredRoles() != null
-                ? jobSearchRequest.getAspirations().getDesiredRoles().size()
+        int roles = request.getAspirations() != null
+                && request.getAspirations().getDesiredRoles() != null
+                ? request.getAspirations().getDesiredRoles().size()
                 : 0;
         log.info("Calling job-service /api/jobs/search userId={} targetRoles={}", userId, roles);
-        HttpHeaders headers = new HttpHeaders();
-        headers.set(X_USER_ID_HEADER, userId);
-        var response = restTemplate.postForObject(
-                jobServiceBaseUrl + "/api/jobs/search",
-                new HttpEntity<>(request, headers),
-                Object.class);
-        JobSearchResponse converted = objectMapper.convertValue(response, JobSearchResponse.class);
+        var generatedRequest = objectMapper.convertValue(
+                request,
+                com.jobseekercopilot.generated.jobservice.model.JobSearchRequest.class);
+        ReedJobSearchResponse response = jobSearchApi.searchJobs(generatedRequest, userId);
         log.info("job-service returned status=200 userId={} totalResults={} durationMs={}",
                 userId,
-                converted == null ? null : converted.getTotalResults(),
+                response == null ? null : response.getTotalResults(),
                 (System.nanoTime() - startedAt) / 1_000_000);
-        return ResponseEntity.ok(converted);
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/applications/user/{userId}")
@@ -255,8 +240,6 @@ public class JobSearchController {
     @Tag(name = "Job Applications")
     public ResponseEntity<?> updateApplicationStatus(
             @Parameter(description = "Application tracker record ID") @PathVariable UUID applicationId,
-            @Parameter(in = ParameterIn.HEADER, name = "X-User-Id", description = "User ID for authentication (optional if JWT filter sets USER_ID attribute)", required = false, example = "user-123")
-            @RequestHeader(name = X_USER_ID_HEADER, required = false) String xUserId,
             @Parameter(description = "Status update request") @jakarta.validation.Valid @RequestBody UpdateApplicationStatusRequest request) {
         long startedAt = System.nanoTime();
         String normalizedStatus = request.status().toUpperCase(Locale.ROOT);
@@ -314,9 +297,7 @@ public class JobSearchController {
     })
     @Tag(name = "Job Applications")
     public ResponseEntity<?> withdrawGeneratedApplication(
-            @Parameter(description = "Application tracker record ID") @PathVariable UUID applicationId,
-            @Parameter(in = ParameterIn.HEADER, name = "X-User-Id", description = "User ID for authentication (optional if JWT filter sets USER_ID attribute)", required = false, example = "user-123")
-            @RequestHeader(name = X_USER_ID_HEADER, required = false) String xUserId) {
+            @Parameter(description = "Application tracker record ID") @PathVariable UUID applicationId) {
         long startedAt = System.nanoTime();
         log.info("job-finder-gateway generated application withdraw received applicationId={}", applicationId);
         ApplicationRecordResponse existingRecord = null;

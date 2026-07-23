@@ -1,0 +1,471 @@
+openapi: 3.0.1
+info:
+  contact:
+    name: Jobseeker Copilot
+  description: |
+    Service for searching and retrieving job listings.
+
+    This service acts as a facade over external job sources (via reed-gateway).
+    It transforms user profile data (aspirations, work preferences) into
+    search requests and returns job results.
+
+    This service does NOT:
+    - Store jobs in a local database
+    - Call external APIs directly
+    - Index or rank jobs
+  license:
+    name: Proprietary source-available
+  title: Jobseeker Copilot - Job Service API
+  version: 1.0.0
+servers:
+- description: Generated server url
+  url: http://localhost:8086
+tags:
+- description: Endpoints for searching job listings
+  name: Job Search
+paths:
+  /api/jobs/search:
+    post:
+      description: "Searches for jobs based on user aspirations and work preferences.\
+        \ Requires X-User-Id header for authentication. This endpoint validates the\
+        \ request, transforms it to the external API format, and returns matching\
+        \ job listings."
+      operationId: searchJobs
+      parameters:
+      - description: User ID for authentication
+        example: user-123
+        explode: false
+        in: header
+        name: X-User-Id
+        required: false
+        schema:
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobSearchRequest"
+        required: true
+      responses:
+        "503":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Service Unavailable
+        "400":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Bad Request
+        "500":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Internal Server Error
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ReedJobSearchResponse"
+          description: OK
+      summary: Search for jobs
+      tags:
+      - Job Search
+      x-content-type: application/json
+      x-accepts:
+      - '*/*'
+components:
+  schemas:
+    ErrorResponse:
+      example:
+        error: error
+        message: message
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      type: object
+    Aspirations:
+      description: "User aspirations for job search including desired roles, locations,\
+        \ and salary expectations"
+      example:
+        desiredRoles:
+        - desiredRoles
+        - desiredRoles
+        industries:
+        - industries
+        - industries
+        salaryExpectation:
+          min: 0
+          max: 6
+          currency: currency
+        locations:
+        - locations
+        - locations
+      properties:
+        desiredRoles:
+          items:
+            type: string
+          type: array
+        industries:
+          items:
+            type: string
+          type: array
+        salaryExpectation:
+          $ref: "#/components/schemas/SalaryExpectation"
+        locations:
+          items:
+            type: string
+          type: array
+      type: object
+    JobSearchRequest:
+      description: Job search criteria based on user profile
+      example:
+        aspirations:
+          desiredRoles:
+          - desiredRoles
+          - desiredRoles
+          industries:
+          - industries
+          - industries
+          salaryExpectation:
+            min: 0
+            max: 6
+            currency: currency
+          locations:
+          - locations
+          - locations
+        workPreferences:
+          employmentType:
+          - employmentType
+          - employmentType
+          remotePreference: remotePreference
+          companySize:
+          - companySize
+          - companySize
+          culture:
+          - culture
+          - culture
+        homeLocation:
+          displayName: London
+          postcode: SW1A 1AA
+          latitude: 51.501
+          longitude: -0.142
+        selectedProviders:
+        - REED
+        - ADZUNA
+      properties:
+        aspirations:
+          $ref: "#/components/schemas/Aspirations"
+        workPreferences:
+          $ref: "#/components/schemas/WorkPreferences"
+        homeLocation:
+          $ref: "#/components/schemas/HomeLocation"
+        selectedProviders:
+          description: Optional integration providers to search. Empty or omitted means all enabled providers.
+          items:
+            type: string
+          type: array
+      required:
+      - aspirations
+      type: object
+    HomeLocation:
+      description: User home location used for provider radius queries and distance sorting
+      properties:
+        displayName:
+          description: Human-readable location label
+          type: string
+        postcode:
+          description: User postcode when available
+          type: string
+        latitude:
+          description: WGS84 latitude
+          format: double
+          maximum: 90
+          minimum: -90
+          type: number
+        longitude:
+          description: WGS84 longitude
+          format: double
+          maximum: 180
+          minimum: -180
+          type: number
+      type: object
+    SalaryExpectation:
+      example:
+        min: 0
+        max: 6
+        currency: currency
+      properties:
+        min:
+          format: int32
+          type: integer
+        max:
+          format: int32
+          type: integer
+        currency:
+          type: string
+      type: object
+    WorkPreferences:
+      description: Work preferences including employment types and location preferences
+      example:
+        employmentType:
+        - employmentType
+        - employmentType
+        remotePreference: remotePreference
+        companySize:
+        - companySize
+        - companySize
+        culture:
+        - culture
+        - culture
+      properties:
+        employmentType:
+          items:
+            type: string
+          type: array
+        remotePreference:
+          type: string
+        companySize:
+          items:
+            type: string
+          type: array
+        culture:
+          items:
+            type: string
+          type: array
+      type: object
+    Job:
+      example:
+        id: id
+        canonicalJobId: canonical-id
+        provider: REED
+        primarySource: REED
+        externalJobId: external-id
+        title: title
+        jobTitle: title
+        company: company
+        companyName: company
+        location: location
+        salary:
+          min: 0
+          max: 6
+          currency: currency
+        employmentType: employmentType
+        postedDate: postedDate
+        description: description
+        url: url
+        matchScore: 1.4658129805029452
+      properties:
+        id:
+          type: string
+        canonicalJobId:
+          type: string
+        provider:
+          type: string
+        primarySource:
+          type: string
+        externalJobId:
+          type: string
+        title:
+          type: string
+        jobTitle:
+          type: string
+        company:
+          type: string
+        companyName:
+          type: string
+        location:
+          type: string
+        canonicalLocation:
+          $ref: "#/components/schemas/CanonicalLocation"
+        salary:
+          $ref: "#/components/schemas/JobSalary"
+        employmentType:
+          type: string
+        contractType:
+          type: string
+        category:
+          type: string
+        postedDate:
+          type: string
+        postedAt:
+          type: string
+        expiresAt:
+          type: string
+        distanceMiles:
+          format: double
+          type: number
+        remote:
+          type: boolean
+        description:
+          type: string
+        url:
+          type: string
+        sourceUrl:
+          type: string
+        sources:
+          items:
+            $ref: "#/components/schemas/JobSourceReference"
+          type: array
+        matchScore:
+          format: double
+          type: number
+        applicationStatus:
+          type: string
+        applicationId:
+          format: uuid
+          type: string
+        cvDocumentId:
+          type: string
+        coverLetterDocumentId:
+          type: string
+        appliedAt:
+          format: date-time
+          type: string
+        applicationUpdatedAt:
+          format: date-time
+          type: string
+      type: object
+    CanonicalLocation:
+      properties:
+        displayName:
+          type: string
+        postcode:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
+        areaParts:
+          items:
+            type: string
+          type: array
+      type: object
+    JobSourceReference:
+      properties:
+        integrationProvider:
+          type: string
+        provider:
+          type: string
+        publisher:
+          type: string
+        externalJobId:
+          type: string
+        listingUrl:
+          type: string
+        applyUrl:
+          type: string
+        directApply:
+          type: boolean
+        providerPostedAt:
+          format: date-time
+          type: string
+      type: object
+    JobSalary:
+      example:
+        min: 0
+        max: 6
+        currency: currency
+      properties:
+        min:
+          format: int32
+          type: integer
+        max:
+          format: int32
+          type: integer
+        currency:
+          type: string
+        period:
+          type: string
+        normalisedAnnualMinimum:
+          format: double
+          type: number
+        normalisedAnnualMaximum:
+          format: double
+          type: number
+        normalisedAnnualMidpoint:
+          format: double
+          type: number
+      type: object
+    ReedJobSearchResponse:
+      example:
+        jobs:
+        - id: id
+          title: title
+          company: company
+          location: location
+          salary:
+            min: 0
+            max: 6
+            currency: currency
+          employmentType: employmentType
+          postedDate: postedDate
+          description: description
+          url: url
+          matchScore: 1.4658129805029452
+        - id: id
+          title: title
+          company: company
+          location: location
+          salary:
+            min: 0
+            max: 6
+            currency: currency
+          employmentType: employmentType
+          postedDate: postedDate
+          description: description
+          url: url
+          matchScore: 1.4658129805029452
+        totalResults: 5
+        page: 5
+        pageSize: 2
+      properties:
+        jobs:
+          items:
+            $ref: "#/components/schemas/Job"
+          type: array
+        resultsByTargetRole:
+          items:
+            $ref: "#/components/schemas/TargetRoleJobResults"
+          type: array
+        totalResults:
+          format: int32
+          type: integer
+        page:
+          format: int32
+          type: integer
+        pageSize:
+          format: int32
+          type: integer
+        providerResults:
+          items:
+            $ref: "#/components/schemas/ProviderResultStatus"
+          type: array
+      type: object
+    TargetRoleJobResults:
+      properties:
+        targetRole:
+          type: string
+        jobs:
+          items:
+            $ref: "#/components/schemas/Job"
+          type: array
+      type: object
+    ProviderResultStatus:
+      properties:
+        provider:
+          type: string
+        status:
+          type: string
+        rawResultCount:
+          format: int32
+          type: integer
+        errorMessage:
+          type: string
+      type: object

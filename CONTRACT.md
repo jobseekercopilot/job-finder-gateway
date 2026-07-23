@@ -1,250 +1,94 @@
-# API Contract: job-finder-gateway ↔ job-service
+# Job Finder identity and downstream contract
 
-## Overview
-This document defines the API contract between the **job-finder-gateway** and the downstream **job-service**. The gateway acts as a secure orchestrator that authenticates requests, fetches user profiles, and triggers job searches.
+Job Finder is the authenticated browser-facing boundary for Job Search. This
+document describes how identity and the generated service contracts cross that
+boundary.
 
----
+## Browser to Job Finder
 
-## 1. Gateway → job-service Request
+`POST /api/jobs/search` requires:
 
-### Endpoint
+```http
+Authorization: Bearer <access-token>
+Content-Type: application/json
 ```
+
+Job Finder accepts only RS256 tokens verified against the configured JWKS. The
+token must have the configured issuer and audience, a non-empty `sub`, and
+`token_type=access`.
+
+`X-User-Id` is not an authentication mechanism. If a browser supplies it, the
+header cannot override the verified token subject.
+
+The request body may contain:
+
+- `aspirations`
+- `workPreferences`
+- `homeLocation`
+- `selectedProviders`
+
+If the body is omitted, Job Finder obtains the authenticated user's profile and
+maps its structured aspirations, work preferences, and location into the Job
+Service request.
+
+## Job Finder to User Profile
+
+Job Finder calls:
+
+```http
+GET /api/profiles/me
+Authorization: Bearer <the validated access token>
+```
+
+The User Profile producer contract owns this operation and derives profile
+ownership from the token subject. Job Finder creates a generated client per
+request before assigning the Bearer token, so token state is not shared between
+users.
+
+## Job Finder to Job Service
+
+Job Finder calls:
+
+```http
 POST /api/jobs/search
+X-User-Id: <verified token subject>
+Content-Type: application/json
 ```
 
-### Headers
-| Header | Type | Required | Description |
-|--------|------|----------|-------------|
-| `X-User-Id` | String | Yes | The authenticated user's ID extracted from JWT claims |
+The current Job Service contract requires `X-User-Id`. Job Finder always
+creates that header from the verified token subject; it never relays the
+browser's value. Replacing this transitional header with authenticated service
+identity is tracked separately by `JOBSVC-01`.
 
-### Request Body
-```json
-{
-  "aspirations": {
-    "desiredRoles": ["Senior Backend Engineer", "Tech Lead"],
-    "industries": ["FinTech", "SaaS"],
-    "salaryExpectation": {
-      "min": 120000,
-      "max": 180000,
-      "currency": "USD"
-    },
-    "locations": ["Remote", "London", "New York"]
-  },
-  "workPreferences": {
-    "employmentType": ["FULL_TIME", "CONTRACT"],
-    "remotePreference": "HYBRID",
-    "companySize": ["50-200", "200-1000"],
-    "culture": ["Innovative", "Collaborative"]
-  }
-}
-```
+The request is converted into the model generated from the pinned Job Service
+contract. The generated response is returned directly, preserving:
 
-### Field Descriptions
+- canonical and provider job identity
+- per-target-role results
+- provider statuses
+- normalised location and salary fields
+- application and generated-document enrichment
 
-#### `aspirations`
-| Field | Type | Description |
-|-------|------|-------------|
-| `desiredRoles` | Array<String> | Job titles the user is targeting |
-| `industries` | Array<String> | Preferred industries |
-| `salaryExpectation` | Object | Salary range with min, max, and currency |
-| `locations` | Array<String> | Preferred work locations |
+## Contract provenance
 
-#### `workPreferences`
-| Field | Type | Description |
-|-------|------|-------------|
-| `employmentType` | Array<String> | Accepted employment types (e.g., FULL_TIME, PART_TIME, CONTRACT) |
-| `remotePreference` | String | Remote work preference (REMOTE, HYBRID, ONSITE) |
-| `companySize` | Array<String> | Preferred company sizes |
-| `culture` | Array<String> | Desired company culture attributes |
+Exact producer contracts and their source revisions are recorded under
+`src/main/openapi`. `SHA256SUMS` protects the reviewed bytes. Maven uses OpenAPI
+Generator 7.5.0 during `generate-sources`; generated code and JARs are never
+committed.
 
----
+Contract policy checks reject:
 
-## 2. User Profile Service Response (JSON String Fields)
+- missing, symbolic, or checksum-drifted inputs
+- unexpected producer revision metadata
+- removal of the required search or profile operations
+- removal of key Job Search request or response boundary fields
 
-### Endpoint Called by Gateway
-```
-GET http://user-profile-service/api/profiles/me
-```
+## Errors and ownership constraints
 
-### Headers Sent
-| Header | Value | Description |
-|--------|-------|-------------|
-| `X-User-Id` | `{USER_ID from JWT}` | Identifies the user whose profile to fetch |
-
-### Expected Response (200 OK) - JSON String Structure
-```json
-{
-  "userId": "uuid-of-user",
-  "skills": "Java, Spring Boot, Microservices",
-  "experience": "10+ years in software engineering",
-  "aspirations": "{\"desiredRoles\":[\"Senior Backend Engineer\",\"Tech Lead\"],\"industries\":[\"FinTech\",\"SaaS\"],\"salaryExpectation\":{\"min\":120000,\"max\":180000,\"currency\":\"USD\"},\"locations\":[\"Remote\",\"London\",\"New York\"]}",
-  "workPrefs": "{\"employmentType\":[\"FULL_TIME\",\"CONTRACT\"],\"remotePreference\":\"HYBRID\",\"companySize\":[\"50-200\",\"200-1000\"],\"culture\":[\"Innovative\",\"Collaborative\"]}"
-}
-```
-
-### Field Descriptions - UserProfile from user-profile-service
-
-#### Core Fields
-| Field | Type | Description |
-|-------|------|-------------|
-| `userId` | String | Unique user identifier |
-| `skills` | String (TEXT) | User's skills (stored as text) |
-| `experience` | String (TEXT) | User's experience (stored as text) |
-| `aspirations` | String (TEXT) | JSON string containing aspirations data |
-| `workPrefs` | String (TEXT) | JSON string containing work preferences data |
-
-#### Aspirations JSON Structure (parsed from `aspirations` field)
-```json
-{
-  "desiredRoles": ["Senior Backend Engineer", "Tech Lead"],
-  "industries": ["FinTech", "SaaS"],
-  "salaryExpectation": {
-    "min": 120000,
-    "max": 180000,
-    "currency": "USD"
-  },
-  "locations": ["Remote", "London", "New York"]
-}
-```
-
-#### Work Preferences JSON Structure (parsed from `workPrefs` field)
-```json
-{
-  "employmentType": ["FULL_TIME", "CONTRACT"],
-  "remotePreference": "HYBRID",
-  "companySize": ["50-200", "200-1000"],
-  "culture": ["Innovative", "Collaborative"]
-}
-```
-
----
-
-## 3. job-service → Gateway Response
-
-### Success Response (200 OK)
-```json
-{
-  "jobs": [
-    {
-      "id": "job-123",
-      "title": "Senior Backend Engineer",
-      "company": "TechCorp Inc.",
-      "location": "Remote",
-      "salary": {
-        "min": 140000,
-        "max": 170000,
-        "currency": "USD"
-      },
-      "employmentType": "FULL_TIME",
-      "postedDate": "2024-01-15T10:30:00Z",
-      "matchScore": 0.92
-    }
-  ],
-  "totalResults": 42,
-  "page": 1,
-  "pageSize": 20
-}
-```
-
-### Error Responses
-
-#### 400 Bad Request
-```json
-{
-  "error": "INVALID_REQUEST",
-  "message": "Missing required field: aspirations.desiredRoles"
-}
-```
-
-#### 401 Unauthorized
-```json
-{
-  "error": "UNAUTHORIZED",
-  "message": "Invalid or missing X-User-Id"
-}
-```
-
-#### 503 Service Unavailable
-```json
-{
-  "error": "SERVICE_UNAVAILABLE",
-  "message": "Job search service is temporarily unavailable"
-}
-```
-
----
-
-## 4. Data Flow
-
-```
-Client Request
-    ↓
-[Gateway] JwtTokenFilter extracts USER_ID from JWT
-    ↓
-[Gateway] Generated UserProfilesApi fetches profile from user-profile-service
-    ↓
-[Gateway] Profile contains JSON strings: aspirations & workPrefs
-    ↓
-[Gateway] Maps the profile into the service-owned search request
-    ↓
-[Gateway] Transforms flat fields into nested JobSearchRequest format
-    ↓
-[Gateway] Generated JobSearchApi calls job-service with X-User-Id header
-    ↓
-[Gateway] Returns job results to client
-```
-
----
-
-## 5. Error Handling
-
-The gateway implements **defensive programming**:
-
-- **User Profile Service Unreachable**: Returns `503 SERVICE_UNAVAILABLE` with message: "User profile service is currently unavailable"
-- **Job Service Unreachable**: Returns `503 SERVICE_UNAVAILABLE` with message: "Job search service is currently unavailable"
-- **Invalid JWT**: Returns `401 UNAUTHORIZED`
-- **Missing Profile Data**: Returns `400 BAD_REQUEST` if required fields are missing
-- **JSON Parse Errors**: Returns `400 BAD_REQUEST` if aspirations/workPrefs JSON is malformed
-
----
-
-## 6. Gateway Constraints
-
-- **Thin Gateway**: No business logic for job matching or scoring
-- **Transform Only**: Parses JSON strings and maps to job-service request format
-- **Relay**: Passes through responses with minimal transformation
-- **Aggregate**: Combines profile data with job search results
-
----
-
-## 7. Key Design Decision: JSON String Storage
-
-The user-profile-service stores complex data as JSON strings in TEXT columns:
-
-**Database Storage:**
-```java
-@Column(columnDefinition = "TEXT")
-private String aspirations;  // JSON string
-
-@Column(columnDefinition = "TEXT")
-private String workPrefs;    // JSON string
-```
-
-**Gateway Processing:**
-1. Receives the generated user-profile response model
-2. Reads structured aspirations and work-preference fields
-3. Maps them into the generated job-service request model
-4. Maps the generated job-service response back to the gateway-owned response model
-
-**Benefits:**
-- Flexible schema without complex migrations
-- Simple database structure
-- Gateway handles all parsing/transformation
-- Easy to evolve JSON structure independently
-
----
-
-## Version History
-- v1.2.0 (2024-01-15): Updated to parse JSON string fields from user-profile-service
-- v1.1.0 (2024-01-15): Flattened UserProfile DTO structure
-- v1.0.0 (2024-01-15): Initial contract definition
+- Missing or invalid authentication returns a stable, redacted `401` response
+  with a correlation ID.
+- An incomplete profile or invalid search request returns `400`.
+- An unavailable User Profile or Job Service returns `503` without exposing
+  credentials.
+- Application-tracker proxy resource ownership is a separate boundary tracked
+  by `JFG-01`; this contract does not claim that work is complete.

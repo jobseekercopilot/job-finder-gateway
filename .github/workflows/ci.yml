@@ -20,6 +20,10 @@ jobs:
         run: ./scripts/test-secret-history.sh
       - name: Scan complete Git history
         run: ./scripts/verify-secret-history.sh
+      - name: Test pinned contract policy
+        run: ./scripts/test-contract-policy.sh
+      - name: Verify pinned producer contracts
+        run: ./scripts/verify-contracts.sh
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

@@ -5,9 +5,9 @@ It accepts search requests from the client BFF and delegates canonical search
 work to Job Service. It also contains application-tracker proxy endpoints;
 those dependencies are integration boundaries, not owned implementations.
 
-Status: **migration candidate; not beta-ready**. The current POM uses local
-generated-client JARs and cannot build from a clean clone. Authentication,
-validation, timeout, and contract issues are recorded in
+Status: **beta hardening in progress; not yet beta-ready**. Reproducible
+generated clients and the Job Search authentication boundary are implemented.
+Remaining ownership, validation, and timeout issues are recorded in
 [`docs/BETA_READINESS_AUDIT.md`](docs/BETA_READINESS_AUDIT.md).
 
 ## Local verification
@@ -15,21 +15,24 @@ validation, timeout, and contract issues are recorded in
 Requires Java 17 and Maven 3.9 or later:
 
 ```bash
-mvn -B clean verify
+mvn -B --no-transfer-progress clean verify
 docker build -t local/job-finder-gateway .
 ```
 
-These commands are the intended clean-clone contract. They remain expected to
-fail until versioned OpenAPI inputs replace the excluded `libs/*.jar`
-dependencies.
+These commands are the clean-clone verification contract. Maven generates
+Job Service and User Profile clients from the checksum-protected producer
+contracts under `src/main/openapi`; generated sources and binaries are not
+committed.
 
-Runtime configuration includes `JWT_SECRET`, `JOB_SERVICE_BASE_URL`,
-`USER_PROFILE_SERVICE_BASE_URL`, `APPLICATION_TRACKER_SERVICE_BASE_URL`, and
-`DOCUMENT_STORE_SERVICE_BASE_URL`. No credential has a repository default.
+Authentication uses RS256 access tokens verified from the platform JWKS.
+Runtime configuration includes `AUTH_JWKS_URI`, `JOB_FINDER_JWT_ISSUER`,
+`JOB_FINDER_JWT_AUDIENCE`, `JOB_SERVICE_URL`, `USER_PROFILE_SERVICE_URL`,
+`APPLICATION_TRACKER_SERVICE_URL`, and `DOCUMENT_STORE_SERVICE_URL`. No signing
+credential is accepted or stored by this service.
 
 Swagger UI is exposed at `/swagger-ui/index.html` and generated OpenAPI at
-`/v3/api-docs` while enabled. `CONTRACT.md` is informative; a versioned,
-machine-readable source contract is still required.
+`/v3/api-docs`; both require a valid access token. `CONTRACT.md` documents the
+identity and generated-client boundaries.
 
 ## Branches, ownership, and licence
 

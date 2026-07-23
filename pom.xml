@@ -20,9 +20,9 @@
 
     <properties>
         <java.version>17</java.version>
-        <jjwt.version>0.12.3</jjwt.version>
         <lombok.version>1.18.32</lombok.version>
         <springdoc.version>2.3.0</springdoc.version>
+        <openapi-generator.version>7.5.0</openapi-generator.version>
     </properties>
 
     <dependencies>
@@ -47,35 +47,8 @@
         </dependency>
 
         <dependency>
-            <groupId>com.jobseekercopilot.generated</groupId>
-            <artifactId>job-service-client</artifactId>
-            <version>1.0.0</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/libs/job-service-client-1.0.0.jar</systemPath>
-        </dependency>
-
-        <dependency>
-            <groupId>com.jobseekercopilot.generated</groupId>
-            <artifactId>user-profile-service-client</artifactId>
-            <version>1.0.0</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/libs/user-profile-service-client-1.0.0.jar</systemPath>
-        </dependency>
-
-        <dependency>
-            <groupId>com.jobseekercopilot.generated</groupId>
-            <artifactId>application-tracker-service-client</artifactId>
-            <version>1.0.0</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/libs/application-tracker-service-client-1.0.0.jar</systemPath>
-        </dependency>
-
-        <dependency>
-            <groupId>com.jobseekercopilot.generated</groupId>
-            <artifactId>document-store-service-client</artifactId>
-            <version>1.0.0</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/libs/document-store-service-client-1.0.0.jar</systemPath>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
         </dependency>
 
         <dependency>
@@ -91,26 +64,6 @@
         </dependency>
 
         <dependency>
-            <groupId>io.jsonwebtoken</groupId>
-            <artifactId>jjwt-api</artifactId>
-            <version>${jjwt.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>io.jsonwebtoken</groupId>
-            <artifactId>jjwt-impl</artifactId>
-            <version>${jjwt.version}</version>
-            <scope>runtime</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>io.jsonwebtoken</groupId>
-            <artifactId>jjwt-jackson</artifactId>
-            <version>${jjwt.version}</version>
-            <scope>runtime</scope>
-        </dependency>
-
-        <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
             <version>${springdoc.version}</version>
@@ -121,10 +74,62 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.openapitools</groupId>
+                <artifactId>openapi-generator-maven-plugin</artifactId>
+                <version>${openapi-generator.version}</version>
+                <executions>
+                    <execution>
+                        <id>generate-job-service-client</id>
+                        <goals><goal>generate</goal></goals>
+                        <configuration>
+                            <inputSpec>${project.basedir}/src/main/openapi/job-service.yaml</inputSpec>
+                            <output>${project.build.directory}/generated-sources/openapi/job-service</output>
+                            <apiPackage>com.jobseekercopilot.generated.jobservice.api</apiPackage>
+                            <modelPackage>com.jobseekercopilot.generated.jobservice.model</modelPackage>
+                            <invokerPackage>com.jobseekercopilot.generated.jobservice.client</invokerPackage>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>generate-user-profile-client</id>
+                        <goals><goal>generate</goal></goals>
+                        <configuration>
+                            <inputSpec>${project.basedir}/src/main/openapi/user-profile-service.json</inputSpec>
+                            <output>${project.build.directory}/generated-sources/openapi/user-profile</output>
+                            <apiPackage>com.jobseekercopilot.generated.userprofileservice.api</apiPackage>
+                            <modelPackage>com.jobseekercopilot.generated.userprofileservice.model</modelPackage>
+                            <invokerPackage>com.jobseekercopilot.generated.userprofileservice.client</invokerPackage>
+                        </configuration>
+                    </execution>
+                </executions>
+                <configuration>
+                    <generatorName>java</generatorName>
+                    <library>resttemplate</library>
+                    <generateApiTests>false</generateApiTests>
+                    <generateModelTests>false</generateModelTests>
+                    <generateApiDocumentation>false</generateApiDocumentation>
+                    <generateModelDocumentation>false</generateModelDocumentation>
+                    <skipValidateSpec>false</skipValidateSpec>
+                    <configOptions>
+                        <annotationLibrary>none</annotationLibrary>
+                        <dateLibrary>java8</dateLibrary>
+                        <hideGenerationTimestamp>true</hideGenerationTimestamp>
+                        <openApiNullable>false</openApiNullable>
+                        <useJakartaEe>true</useJakartaEe>
+                        <useRuntimeException>true</useRuntimeException>
+                    </configOptions>
+                </configuration>
+            </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -142,9 +147,6 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
-                <configuration>
-                    <includeSystemScope>true</includeSystemScope>
-                </configuration>
             </plugin>
         </plugins>
     </build>

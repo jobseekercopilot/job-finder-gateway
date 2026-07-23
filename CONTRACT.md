@@ -181,15 +181,15 @@ Client Request
     ↓
 [Gateway] JwtTokenFilter extracts USER_ID from JWT
     ↓
-[Gateway] UserProfileClient fetches profile from user-profile-service
+[Gateway] Generated UserProfilesApi fetches profile from user-profile-service
     ↓
 [Gateway] Profile contains JSON strings: aspirations & workPrefs
     ↓
-[Gateway] JsonParser parses JSON strings into flattened fields
+[Gateway] Maps the profile into the service-owned search request
     ↓
 [Gateway] Transforms flat fields into nested JobSearchRequest format
     ↓
-[Gateway] JobServiceClient calls job-service with X-User-Id header
+[Gateway] Generated JobSearchApi calls job-service with X-User-Id header
     ↓
 [Gateway] Returns job results to client
 ```
@@ -231,10 +231,10 @@ private String workPrefs;    // JSON string
 ```
 
 **Gateway Processing:**
-1. Receives UserProfile with JSON strings
-2. Uses `JsonParser` to parse `aspirations` and `workPrefs` fields
-3. Extracts flattened fields (desiredRoles, industries, salaryMin, etc.)
-4. Transforms to nested JobSearchRequest for job-service
+1. Receives the generated user-profile response model
+2. Reads structured aspirations and work-preference fields
+3. Maps them into the generated job-service request model
+4. Maps the generated job-service response back to the gateway-owned response model
 
 **Benefits:**
 - Flexible schema without complex migrations

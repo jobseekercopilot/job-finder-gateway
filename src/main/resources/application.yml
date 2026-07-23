@@ -1,5 +1,15 @@
+spring:
+  application:
+    name: job-finder-gateway
+
 server:
   port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
 
 jwt:
   secret: ${JWT_SECRET}
@@ -9,3 +19,13 @@ services:
     url: ${USER_PROFILE_SERVICE_URL:http://user-profile-service:8085}
   job-service:
     url: ${JOB_SERVICE_URL:http://job-service:8086}
+  application-tracker:
+    url: ${APPLICATION_TRACKER_SERVICE_URL:http://application-tracker-service:8088}
+  document-store:
+    url: ${DOCUMENT_STORE_SERVICE_URL:http://document-store-service:8089}
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{correlationId}] [%X{serviceName}] [%thread] %logger{36} - %msg%n"
+  level:
+    com.jobseekercopilot: ${APP_LOG_LEVEL:INFO}

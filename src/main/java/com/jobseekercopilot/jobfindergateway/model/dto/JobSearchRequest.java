@@ -5,6 +5,8 @@ import java.util.List;
 public class JobSearchRequest {
     private Aspirations aspirations;
     private WorkPreferences workPreferences;
+    private HomeLocation homeLocation;
+    private List<String> selectedProviders;
 
     public JobSearchRequest() {
     }
@@ -23,6 +25,22 @@ public class JobSearchRequest {
 
     public void setWorkPreferences(WorkPreferences workPreferences) {
         this.workPreferences = workPreferences;
+    }
+
+    public HomeLocation getHomeLocation() {
+        return homeLocation;
+    }
+
+    public void setHomeLocation(HomeLocation homeLocation) {
+        this.homeLocation = homeLocation;
+    }
+
+    public List<String> getSelectedProviders() {
+        return selectedProviders;
+    }
+
+    public void setSelectedProviders(List<String> selectedProviders) {
+        this.selectedProviders = selectedProviders;
     }
 
     public static class Aspirations {
@@ -105,6 +123,8 @@ public class JobSearchRequest {
         private String remotePreference;
         private List<String> companySize;
         private List<String> culture;
+        private Double homeLatitude;
+        private Double homeLongitude;
 
         public WorkPreferences() {
         }
@@ -139,6 +159,61 @@ public class JobSearchRequest {
 
         public void setCulture(List<String> culture) {
             this.culture = culture;
+        }
+
+        public Double getHomeLatitude() {
+            return homeLatitude;
+        }
+
+        public void setHomeLatitude(Double homeLatitude) {
+            this.homeLatitude = homeLatitude;
+        }
+
+        public Double getHomeLongitude() {
+            return homeLongitude;
+        }
+
+        public void setHomeLongitude(Double homeLongitude) {
+            this.homeLongitude = homeLongitude;
+        }
+    }
+
+    public static class HomeLocation {
+        private String displayName;
+        private String postcode;
+        private Double latitude;
+        private Double longitude;
+
+        public String getDisplayName() {
+            return displayName;
+        }
+
+        public void setDisplayName(String displayName) {
+            this.displayName = displayName;
+        }
+
+        public String getPostcode() {
+            return postcode;
+        }
+
+        public void setPostcode(String postcode) {
+            this.postcode = postcode;
+        }
+
+        public Double getLatitude() {
+            return latitude;
+        }
+
+        public void setLatitude(Double latitude) {
+            this.latitude = latitude;
+        }
+
+        public Double getLongitude() {
+            return longitude;
+        }
+
+        public void setLongitude(Double longitude) {
+            this.longitude = longitude;
         }
     }
 }

@@ -69,6 +69,36 @@ contract. The generated response is returned directly, preserving:
 - normalised location and salary fields
 - application and generated-document enrichment
 
+## Job Finder to Application Tracker
+
+All application proxy routes require the same validated access token as Job
+Search. The list route retains its current compatibility path:
+
+```http
+GET /api/jobs/applications/user/{userId}
+Authorization: Bearer <access-token>
+```
+
+`{userId}` must exactly match the token subject. Job Finder constructs the
+downstream list path from the subject and never forwards `X-User-Id`.
+
+Status and generated-withdraw routes first load the application with the
+validated Bearer token and verify that its `userId` equals the token subject.
+Only an owned record can reach the downstream mutation. Unknown and foreign
+record IDs return the same redacted `404`; downstream response ownership is
+also checked before returning data.
+
+Generated-document cleanup receives the same Bearer token. Request logs replace
+application IDs and list-owner path segments with placeholders. Framework web
+logging stays at INFO and the first-request handler lookup warning is suppressed
+so it cannot emit the unredacted path before the application filter.
+
+These gateway checks are defence in depth, not an atomic authorization
+boundary. Application Tracker must authenticate the token and enforce
+subject/resource ownership within each query and mutation. That blocking
+dependency is tracked by
+[`APP-03`](https://github.com/jobseekercopilot/application-tracker-service/issues/4).
+
 ## Contract provenance
 
 Exact producer contracts and their source revisions are recorded under
@@ -90,5 +120,5 @@ Contract policy checks reject:
 - An incomplete profile or invalid search request returns `400`.
 - An unavailable User Profile or Job Service returns `503` without exposing
   credentials.
-- Application-tracker proxy resource ownership is a separate boundary tracked
-  by `JFG-01`; this contract does not claim that work is complete.
+- Job Finder enforces its application-proxy ownership checks, but JFG-01 remains
+  open until Application Tracker APP-03 supplies atomic downstream enforcement.

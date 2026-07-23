@@ -32,3 +32,6 @@ logging:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{correlationId}] [%X{serviceName}] [%thread] %logger{36} - %msg%n"
   level:
     com.jobseekercopilot: ${APP_LOG_LEVEL:INFO}
+    org.springframework.security: INFO
+    org.springframework.web: INFO
+    org.springframework.web.servlet.handler.HandlerMappingIntrospector: ERROR

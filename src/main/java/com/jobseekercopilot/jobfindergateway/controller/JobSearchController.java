@@ -10,6 +10,7 @@ import com.jobseekercopilot.jobfindergateway.model.dto.UpdateApplicationStatusRe
 import com.jobseekercopilot.jobfindergateway.model.dto.WithdrawGeneratedApplicationResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -49,6 +50,12 @@ import java.util.UUID;
 public class JobSearchController {
 
     private static final Logger log = LoggerFactory.getLogger(JobSearchController.class);
+    private static final String APPLICATION_NOT_FOUND =
+            "{\"error\":\"APPLICATION_NOT_FOUND\",\"message\":\"Application record not found\"}";
+    private static final String APPLICATION_TRACKER_UNAVAILABLE =
+            "{\"error\":\"SERVICE_UNAVAILABLE\",\"message\":\"Application tracker service is currently unavailable\"}";
+    private static final String DOWNSTREAM_OWNERSHIP_FAILURE =
+            "{\"error\":\"SERVICE_UNAVAILABLE\",\"message\":\"Application ownership could not be verified\"}";
 
     private final UserProfileClientFactory userProfileClientFactory;
     private final JobSearchApi jobSearchApi;
@@ -193,37 +200,62 @@ public class JobSearchController {
     }
 
     @GetMapping("/applications/user/{userId}")
-    @Operation(summary = "Get persisted applications for user", description = "Proxies saved application records from application-tracker-service.")
+    @Operation(
+            summary = "Get persisted applications for the authenticated user",
+            description = "Proxies only the authenticated subject's application records from application-tracker-service.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Applications returned",
-                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApplicationRecordResponse.class))),
+                    content = @Content(mediaType = "application/json",
+                            array = @ArraySchema(schema = @Schema(implementation = ApplicationRecordResponse.class)))),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid access token",
+                    content = @Content(mediaType = "application/json")),
+            @ApiResponse(responseCode = "404", description = "Application owner not found",
+                    content = @Content(mediaType = "application/json")),
+            @ApiResponse(responseCode = "502", description = "Downstream ownership validation failed",
+                    content = @Content(mediaType = "application/json")),
             @ApiResponse(responseCode = "503", description = "Application tracker unavailable", content = @Content(mediaType = "application/json"))
     })
     @Tag(name = "Job Applications")
     public ResponseEntity<?> getApplicationsForUser(
-            @Parameter(description = "User ID to retrieve applications for") @PathVariable String userId) {
+            @AuthenticationPrincipal Jwt accessToken,
+            @Parameter(description = "Authenticated subject; must match the access token")
+            @PathVariable String userId) {
         long startedAt = System.nanoTime();
-        try {
-            log.info("Calling application-tracker-service application list userId={}", userId);
-            ResponseEntity<List<ApplicationRecordResponse>> response = restTemplate.exchange(
-                    applicationTrackerBaseUrl + "/api/v1/applications/user/" + userId,
-                    org.springframework.http.HttpMethod.GET,
-                    HttpEntity.EMPTY,
-                    new ParameterizedTypeReference<List<ApplicationRecordResponse>>() {});
-            log.info("application-tracker-service list returned userId={} responseStatus={} count={} durationMs={}",
-                    userId,
-                    response.getStatusCode().value(),
-                    response.getBody() == null ? 0 : response.getBody().size(),
+        String subject = accessToken.getSubject();
+        if (!subject.equals(userId)) {
+            log.warn("application list ownership check denied durationMs={}",
                     (System.nanoTime() - startedAt) / 1_000_000);
-            return ResponseEntity.status(response.getStatusCode()).body(response.getBody());
+            return applicationNotFound();
+        }
+
+        try {
+            log.info("Calling application-tracker-service application list");
+            ResponseEntity<List<ApplicationRecordResponse>> response = restTemplate.exchange(
+                    applicationTrackerBaseUrl + "/api/v1/applications/user/{subject}",
+                    org.springframework.http.HttpMethod.GET,
+                    authenticatedEntity(accessToken),
+                    new ParameterizedTypeReference<List<ApplicationRecordResponse>>() {},
+                    subject);
+            List<ApplicationRecordResponse> records =
+                    response.getBody() == null ? List.of() : response.getBody();
+            if (records.stream().anyMatch(record -> !isOwnedBy(record, subject))) {
+                log.error("application-tracker-service list failed ownership validation durationMs={}",
+                        (System.nanoTime() - startedAt) / 1_000_000);
+                return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                        .body(DOWNSTREAM_OWNERSHIP_FAILURE);
+            }
+            log.info("application-tracker-service list returned responseStatus={} count={} durationMs={}",
+                    response.getStatusCode().value(),
+                    records.size(),
+                    (System.nanoTime() - startedAt) / 1_000_000);
+            return ResponseEntity.status(response.getStatusCode()).body(records);
         } catch (RestClientException e) {
-            log.warn("Application tracker list failed for userId={} durationMs={} error={}",
-                    userId,
+            log.warn("application-tracker-service list failed durationMs={} error={}",
                     (System.nanoTime() - startedAt) / 1_000_000,
                     e.getClass().getSimpleName(),
                     e);
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .body("{\"error\":\"SERVICE_UNAVAILABLE\",\"message\":\"Application tracker service is currently unavailable\"}");
+                    .body(APPLICATION_TRACKER_UNAVAILABLE);
         }
     }
 
@@ -233,19 +265,20 @@ public class JobSearchController {
             @ApiResponse(responseCode = "200", description = "Status updated successfully",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApplicationRecordResponse.class))),
             @ApiResponse(responseCode = "400", description = "Invalid status request", content = @Content(mediaType = "application/json")),
-            @ApiResponse(responseCode = "401", description = "Missing or invalid user ID", content = @Content(mediaType = "application/json")),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid access token", content = @Content(mediaType = "application/json")),
             @ApiResponse(responseCode = "404", description = "Application record not found", content = @Content(mediaType = "application/json")),
+            @ApiResponse(responseCode = "502", description = "Downstream ownership validation failed", content = @Content(mediaType = "application/json")),
             @ApiResponse(responseCode = "503", description = "Application tracker unavailable", content = @Content(mediaType = "application/json"))
     })
     @Tag(name = "Job Applications")
     public ResponseEntity<?> updateApplicationStatus(
+            @AuthenticationPrincipal Jwt accessToken,
             @Parameter(description = "Application tracker record ID") @PathVariable UUID applicationId,
             @Parameter(description = "Status update request") @jakarta.validation.Valid @RequestBody UpdateApplicationStatusRequest request) {
         long startedAt = System.nanoTime();
         String normalizedStatus = request.status().toUpperCase(Locale.ROOT);
         if (!supportedStatuses().contains(normalizedStatus)) {
-            log.warn("job-finder-gateway application status rejected applicationId={} status={} durationMs={}",
-                    applicationId,
+            log.warn("job-finder-gateway application status rejected status={} durationMs={}",
                     normalizedStatus,
                     (System.nanoTime() - startedAt) / 1_000_000);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -253,35 +286,46 @@ public class JobSearchController {
         }
 
         try {
-            log.info("Calling application-tracker-service status update applicationId={} status={}",
-                    applicationId,
-                    normalizedStatus);
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
+            requireOwnedApplication(accessToken, applicationId);
+            log.info("Calling application-tracker-service status update status={}", normalizedStatus);
             ResponseEntity<Object> response = restTemplate.exchange(
                     applicationTrackerBaseUrl + "/api/v1/applications/" + applicationId + "/status",
                     org.springframework.http.HttpMethod.PATCH,
-                    new HttpEntity<>(new UpdateApplicationStatusRequest(normalizedStatus), headers),
+                    new HttpEntity<>(
+                            new UpdateApplicationStatusRequest(normalizedStatus),
+                            authenticatedHeaders(accessToken)),
                     Object.class);
-            log.info("application-tracker-service status update returned applicationId={} status={} responseStatus={} durationMs={}",
-                    applicationId,
+            ApplicationRecordResponse updated =
+                    objectMapper.convertValue(response.getBody(), ApplicationRecordResponse.class);
+            if (!isOwnedBy(updated, accessToken.getSubject())) {
+                log.error("application-tracker-service status response failed ownership validation durationMs={}",
+                        (System.nanoTime() - startedAt) / 1_000_000);
+                return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                        .body(DOWNSTREAM_OWNERSHIP_FAILURE);
+            }
+            log.info("application-tracker-service status update returned status={} responseStatus={} durationMs={}",
                     normalizedStatus,
                     response.getStatusCode().value(),
                     (System.nanoTime() - startedAt) / 1_000_000);
             return ResponseEntity
                     .status(response.getStatusCode())
-                    .body(objectMapper.convertValue(response.getBody(), ApplicationRecordResponse.class));
+                    .body(updated);
+        } catch (ApplicationNotFoundException e) {
+            log.warn("application status ownership check denied durationMs={}",
+                    (System.nanoTime() - startedAt) / 1_000_000);
+            return applicationNotFound();
         } catch (HttpStatusCodeException e) {
-            log.warn("application-tracker-service status update rejected applicationId={} responseStatus={} durationMs={}",
-                    applicationId,
+            log.warn("application-tracker-service status update rejected responseStatus={} durationMs={}",
                     e.getStatusCode().value(),
                     (System.nanoTime() - startedAt) / 1_000_000);
-            return ResponseEntity.status(e.getStatusCode())
-                    .body(e.getResponseBodyAsString());
+            return sanitizedApplicationFailure(e);
         } catch (RestClientException e) {
-            log.warn("Application tracker status update failed for application {}", applicationId, e);
+            log.warn("application-tracker-service status update failed durationMs={} error={}",
+                    (System.nanoTime() - startedAt) / 1_000_000,
+                    e.getClass().getSimpleName(),
+                    e);
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .body("{\"error\":\"SERVICE_UNAVAILABLE\",\"message\":\"Application tracker service is currently unavailable\"}");
+                    .body(APPLICATION_TRACKER_UNAVAILABLE);
         }
     }
 
@@ -291,54 +335,58 @@ public class JobSearchController {
             @ApiResponse(responseCode = "200", description = "Generated application withdrawn",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = WithdrawGeneratedApplicationResponse.class))),
             @ApiResponse(responseCode = "400", description = "Application has already progressed and cannot be reset", content = @Content(mediaType = "application/json")),
-            @ApiResponse(responseCode = "401", description = "Missing or invalid user ID", content = @Content(mediaType = "application/json")),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid access token", content = @Content(mediaType = "application/json")),
             @ApiResponse(responseCode = "404", description = "Application record not found", content = @Content(mediaType = "application/json")),
+            @ApiResponse(responseCode = "502", description = "Downstream ownership validation failed", content = @Content(mediaType = "application/json")),
             @ApiResponse(responseCode = "503", description = "Application tracker unavailable", content = @Content(mediaType = "application/json"))
     })
     @Tag(name = "Job Applications")
     public ResponseEntity<?> withdrawGeneratedApplication(
+            @AuthenticationPrincipal Jwt accessToken,
             @Parameter(description = "Application tracker record ID") @PathVariable UUID applicationId) {
         long startedAt = System.nanoTime();
-        log.info("job-finder-gateway generated application withdraw received applicationId={}", applicationId);
-        ApplicationRecordResponse existingRecord = null;
+        log.info("job-finder-gateway generated application withdraw received");
         try {
-            log.info("Calling application-tracker-service get application applicationId={}", applicationId);
-            ResponseEntity<Object> existing = restTemplate.exchange(
-                    applicationTrackerBaseUrl + "/api/v1/applications/" + applicationId,
-                    org.springframework.http.HttpMethod.GET,
-                    HttpEntity.EMPTY,
-                    Object.class);
-            existingRecord = objectMapper.convertValue(existing.getBody(), ApplicationRecordResponse.class);
-
-            log.info("Calling application-tracker-service withdraw generated applicationId={}", applicationId);
+            ApplicationRecordResponse existingRecord =
+                    requireOwnedApplication(accessToken, applicationId);
+            log.info("Calling application-tracker-service withdraw generated");
             ResponseEntity<Object> response = restTemplate.exchange(
                     applicationTrackerBaseUrl + "/api/v1/applications/" + applicationId + "/withdraw-generated",
                     org.springframework.http.HttpMethod.POST,
-                    HttpEntity.EMPTY,
+                    authenticatedEntity(accessToken),
                     Object.class);
-            cleanupGeneratedDocuments(existingRecord);
-            log.info("Generated application withdraw completed applicationId={} responseStatus={} durationMs={}",
-                    applicationId,
+            WithdrawGeneratedApplicationResponse result = objectMapper.convertValue(
+                    response.getBody(),
+                    WithdrawGeneratedApplicationResponse.class);
+            if (result == null || !applicationId.equals(result.applicationId())) {
+                log.error("application-tracker-service withdraw response failed resource validation durationMs={}",
+                        (System.nanoTime() - startedAt) / 1_000_000);
+                return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                        .body(DOWNSTREAM_OWNERSHIP_FAILURE);
+            }
+            cleanupGeneratedDocuments(existingRecord, accessToken);
+            log.info("Generated application withdraw completed responseStatus={} durationMs={}",
                     response.getStatusCode().value(),
                     (System.nanoTime() - startedAt) / 1_000_000);
             return ResponseEntity
                     .status(response.getStatusCode())
-                    .body(objectMapper.convertValue(response.getBody(), WithdrawGeneratedApplicationResponse.class));
+                    .body(result);
+        } catch (ApplicationNotFoundException e) {
+            log.warn("generated application withdraw ownership check denied durationMs={}",
+                    (System.nanoTime() - startedAt) / 1_000_000);
+            return applicationNotFound();
         } catch (HttpStatusCodeException e) {
-            log.warn("Generated application withdraw rejected applicationId={} responseStatus={} durationMs={}",
-                    applicationId,
+            log.warn("Generated application withdraw rejected responseStatus={} durationMs={}",
                     e.getStatusCode().value(),
                     (System.nanoTime() - startedAt) / 1_000_000);
-            return ResponseEntity.status(e.getStatusCode())
-                    .body(e.getResponseBodyAsString());
+            return sanitizedApplicationFailure(e);
         } catch (RestClientException e) {
-            log.warn("Generated application withdraw failed applicationId={} durationMs={} error={}",
-                    applicationId,
+            log.warn("Generated application withdraw failed durationMs={} error={}",
                     (System.nanoTime() - startedAt) / 1_000_000,
                     e.getClass().getSimpleName(),
                     e);
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .body("{\"error\":\"SERVICE_UNAVAILABLE\",\"message\":\"Application tracker service is currently unavailable\"}");
+                    .body(APPLICATION_TRACKER_UNAVAILABLE);
         }
     }
 
@@ -428,26 +476,82 @@ public class JobSearchController {
         );
     }
 
-    private void cleanupGeneratedDocuments(ApplicationRecordResponse record) {
+    private ApplicationRecordResponse requireOwnedApplication(Jwt accessToken, UUID applicationId) {
+        ResponseEntity<Object> existing = restTemplate.exchange(
+                applicationTrackerBaseUrl + "/api/v1/applications/" + applicationId,
+                org.springframework.http.HttpMethod.GET,
+                authenticatedEntity(accessToken),
+                Object.class);
+        ApplicationRecordResponse record =
+                objectMapper.convertValue(existing.getBody(), ApplicationRecordResponse.class);
+        if (!isOwnedBy(record, accessToken.getSubject())) {
+            throw new ApplicationNotFoundException();
+        }
+        return record;
+    }
+
+    private boolean isOwnedBy(ApplicationRecordResponse record, String subject) {
+        return record != null && subject.equals(record.userId());
+    }
+
+    private HttpHeaders authenticatedHeaders(Jwt accessToken) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(accessToken.getTokenValue());
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+        return headers;
+    }
+
+    private HttpEntity<Void> authenticatedEntity(Jwt accessToken) {
+        return new HttpEntity<>(authenticatedHeaders(accessToken));
+    }
+
+    private ResponseEntity<String> applicationNotFound() {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(APPLICATION_NOT_FOUND);
+    }
+
+    private ResponseEntity<String> sanitizedApplicationFailure(HttpStatusCodeException exception) {
+        if (exception.getStatusCode().value() == HttpStatus.NOT_FOUND.value()
+                || exception.getStatusCode().value() == HttpStatus.FORBIDDEN.value()) {
+            return applicationNotFound();
+        }
+        if (exception.getStatusCode().value() == HttpStatus.BAD_REQUEST.value()
+                || exception.getStatusCode().value() == HttpStatus.CONFLICT.value()) {
+            return ResponseEntity.status(exception.getStatusCode())
+                    .body("{\"error\":\"APPLICATION_OPERATION_REJECTED\",\"message\":\"Application operation was rejected\"}");
+        }
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(APPLICATION_TRACKER_UNAVAILABLE);
+    }
+
+    private void cleanupGeneratedDocuments(ApplicationRecordResponse record, Jwt accessToken) {
         if (record == null) {
             return;
         }
-        deleteGeneratedDocument(record.cvDocumentId());
-        deleteGeneratedDocument(record.coverLetterDocumentId());
+        deleteGeneratedDocument(record.cvDocumentId(), accessToken);
+        deleteGeneratedDocument(record.coverLetterDocumentId(), accessToken);
     }
 
-    private void deleteGeneratedDocument(String documentId) {
+    private void deleteGeneratedDocument(String documentId, Jwt accessToken) {
         if (documentId == null || documentId.isBlank()) {
             return;
         }
         try {
-            log.info("Deleting generated document during withdraw documentId={}", documentId);
-            restTemplate.delete(documentStoreBaseUrl + "/api/v1/documents/{id}", UUID.fromString(documentId));
-            log.info("Generated document deleted during withdraw documentId={}", documentId);
+            log.info("Deleting generated document during withdraw");
+            restTemplate.exchange(
+                    documentStoreBaseUrl + "/api/v1/documents/{id}",
+                    org.springframework.http.HttpMethod.DELETE,
+                    authenticatedEntity(accessToken),
+                    Void.class,
+                    UUID.fromString(documentId));
+            log.info("Generated document deleted during withdraw");
         } catch (IllegalArgumentException e) {
-            log.warn("Skipping generated document cleanup for non-UUID document id {}", documentId);
+            log.warn("Skipping generated document cleanup for malformed document reference");
         } catch (RestClientException e) {
-            log.warn("Generated document cleanup failed for document id {}", documentId, e);
+            log.warn("Generated document cleanup failed error={}", e.getClass().getSimpleName(), e);
         }
+    }
+
+    private static final class ApplicationNotFoundException extends RuntimeException {
     }
 }

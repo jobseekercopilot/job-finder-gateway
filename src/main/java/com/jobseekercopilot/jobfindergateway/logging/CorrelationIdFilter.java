@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -22,6 +23,10 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
     public static final String SERVICE_MDC_KEY = "serviceName";
 
     private static final Logger log = LoggerFactory.getLogger(CorrelationIdFilter.class);
+    private static final Pattern UUID_PATH_SEGMENT = Pattern.compile(
+            "(?i)(?<=/)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?=/|$)");
+    private static final Pattern USER_PATH_SEGMENT = Pattern.compile(
+            "(?<=/applications/user/)[^/]+");
 
     private final String serviceName;
 
@@ -42,20 +47,27 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
         MDC.put(MDC_KEY, correlationId);
         MDC.put(SERVICE_MDC_KEY, serviceName);
         response.setHeader(HEADER_NAME, correlationId);
+        String requestPath = redactedPath(request.getRequestURI());
 
         try {
-            log.info("service={} request started method={} path={}", serviceName, request.getMethod(), request.getRequestURI());
+            log.info("service={} request started method={} path={}", serviceName, request.getMethod(), requestPath);
             filterChain.doFilter(request, response);
         } finally {
             long durationMs = (System.nanoTime() - startedAt) / 1_000_000;
             log.info("service={} request completed method={} path={} status={} durationMs={}",
                     serviceName,
                     request.getMethod(),
-                    request.getRequestURI(),
+                    requestPath,
                     response.getStatus(),
                     durationMs);
             MDC.remove(MDC_KEY);
             MDC.remove(SERVICE_MDC_KEY);
         }
+    }
+
+    static String redactedPath(String path) {
+        String withoutApplicationIds =
+                UUID_PATH_SEGMENT.matcher(path).replaceAll("{applicationId}");
+        return USER_PATH_SEGMENT.matcher(withoutApplicationIds).replaceAll("{subject}");
     }
 }

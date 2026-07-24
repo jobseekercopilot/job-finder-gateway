@@ -62,6 +62,18 @@ if "$repository_root/scripts/verify-contracts.sh" "$temporary_dir/job-boundary" 
     exit 1
 fi
 
+copy_contracts "$temporary_dir/job-result-state"
+sed 's/^        searchStatus:$/        removedSearchStatus:/' \
+    "$temporary_dir/job-result-state/job-service.yaml" \
+    > "$temporary_dir/job-result-state/changed.yaml"
+mv "$temporary_dir/job-result-state/changed.yaml" \
+    "$temporary_dir/job-result-state/job-service.yaml"
+(cd "$temporary_dir/job-result-state" && sha256sum job-service.yaml user-profile-service.json > SHA256SUMS)
+if "$repository_root/scripts/verify-contracts.sh" "$temporary_dir/job-result-state" >/dev/null 2>&1; then
+    echo "contract policy negative test accepted removal of the aggregate search status" >&2
+    exit 1
+fi
+
 copy_contracts "$temporary_dir/job-authentication"
 sed 's/^      scheme: bearer$/      scheme: removed/' \
     "$temporary_dir/job-authentication/job-service.yaml" \

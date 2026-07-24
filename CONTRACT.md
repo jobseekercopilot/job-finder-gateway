@@ -107,6 +107,13 @@ Exact producer contracts and their source revisions are recorded under
 Generator 7.5.0 during `generate-sources`; generated code and JARs are never
 committed.
 
+The Job Service pin currently consumes contract `1.2.0` at producer revision
+`6835b63e539bfce7462d4df737b794935e8581e9`. It includes aggregate
+`searchStatus`/`matchingStatus`, the stable provider-result taxonomy, healthy
+empty-result semantics and canonical Job schema `2.0`. Compatibility checks
+protect those response boundaries as well as the existing request and identity
+boundaries.
+
 Contract policy checks reject:
 
 - missing, symbolic, or checksum-drifted inputs

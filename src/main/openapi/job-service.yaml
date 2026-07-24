@@ -5,9 +5,9 @@ info:
   description: |
     Service for searching and retrieving job listings.
 
-    This service acts as a facade over external job sources (via reed-gateway).
+    This service aggregates external job sources through provider gateways.
     It transforms user profile data (aspirations, work preferences) into
-    search requests and returns job results.
+    bounded concurrent searches and returns canonical job results.
 
     This service does NOT:
     - Store jobs in a local database
@@ -16,7 +16,7 @@ info:
   license:
     name: Proprietary source-available
   title: Jobseeker Copilot - Job Service API
-  version: 1.0.0
+  version: 1.2.0
 servers:
 - description: Generated server url
   url: http://localhost:8086
@@ -48,7 +48,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-          description: Service Unavailable
+          description: No requested provider was enabled or every attempted provider failed
         "400":
           content:
             '*/*':
@@ -263,6 +263,7 @@ components:
       type: object
     Job:
       example:
+        canonicalSchemaVersion: "2.0"
         id: id
         canonicalJobId: canonical-id
         provider: REED
@@ -283,11 +284,19 @@ components:
         url: url
         matchScore: 1.4658129805029452
       properties:
+        canonicalSchemaVersion:
+          description: Version of the additive canonical Job field dictionary.
+          example: "2.0"
+          type: string
         id:
+          deprecated: true
+          description: Legacy alias of canonicalJobId retained for compatibility.
           type: string
         canonicalJobId:
           type: string
         provider:
+          deprecated: true
+          description: Legacy alias of primarySource retained for compatibility.
           type: string
         primarySource:
           type: string
@@ -296,43 +305,92 @@ components:
         title:
           type: string
         jobTitle:
+          deprecated: true
+          description: Legacy alias of title retained for compatibility.
           type: string
         company:
+          deprecated: true
+          description: Legacy alias of companyName retained for compatibility.
           type: string
         companyName:
           type: string
         location:
+          deprecated: true
+          description: Legacy provider location label. Use canonicalLocation.
           type: string
         canonicalLocation:
           $ref: "#/components/schemas/CanonicalLocation"
         salary:
           $ref: "#/components/schemas/JobSalary"
         employmentType:
+          description: Raw or legacy provider employment value retained without loss.
           type: string
+        employmentTypeCode:
+          $ref: "#/components/schemas/EmploymentTypeCode"
         contractType:
+          description: Raw or legacy provider contract value retained without loss.
           type: string
+        contractTypeCode:
+          $ref: "#/components/schemas/ContractTypeCode"
+        workplaceType:
+          $ref: "#/components/schemas/WorkplaceTypeCode"
         category:
           type: string
         postedDate:
+          deprecated: true
+          description: Legacy raw provider date retained for compatibility.
           type: string
         postedAt:
+          description: Raw provider timestamp retained without timezone fabrication.
           type: string
         expiresAt:
+          description: Raw provider expiry timestamp retained without timezone fabrication.
+          type: string
+        postedAtUtc:
+          description: Provider posting instant only when an offset or timezone was supplied.
+          format: date-time
+          type: string
+        expiresAtUtc:
+          description: Provider expiry instant only when an offset or timezone was supplied.
+          format: date-time
+          type: string
+        applicationDeadlineAtUtc:
+          description: Explicit application deadline instant when distinct from listing expiry.
+          format: date-time
           type: string
         distanceMiles:
           format: double
           type: number
         remote:
+          deprecated: true
+          description: Legacy Boolean retained for compatibility. False does not imply ON_SITE.
           type: boolean
         description:
           type: string
         url:
+          description: Preferred validated HTTP(S) application URL.
+          format: uri
+          pattern: "^https?://"
           type: string
         sourceUrl:
+          description: Preferred validated HTTP(S) source listing URL.
+          format: uri
+          pattern: "^https?://"
           type: string
         sources:
           items:
             $ref: "#/components/schemas/JobSourceReference"
+          type: array
+        skills:
+          items:
+            $ref: "#/components/schemas/JobSkill"
+          type: array
+        experience:
+          $ref: "#/components/schemas/JobExperience"
+        fieldProvenance:
+          description: Field-level raw/normalised evidence. Sensitive provider payloads are never retained here.
+          items:
+            $ref: "#/components/schemas/JobFieldProvenance"
           type: array
         matchScore:
           format: double
@@ -352,9 +410,30 @@ components:
         applicationUpdatedAt:
           format: date-time
           type: string
+      required:
+      - canonicalSchemaVersion
+      - canonicalJobId
+      - primarySource
+      - externalJobId
+      - employmentTypeCode
+      - contractTypeCode
+      - workplaceType
+      - sources
+      - skills
+      - experience
+      - fieldProvenance
       type: object
     CanonicalLocation:
       properties:
+        rawDisplayName:
+          description: Provider display label retained without normalisation.
+          type: string
+        rawCity:
+          type: string
+        rawRegion:
+          type: string
+        rawCountry:
+          type: string
         displayName:
           type: string
         postcode:
@@ -367,6 +446,23 @@ components:
           items:
             type: string
           type: array
+        city:
+          type: string
+        region:
+          type: string
+        countryCode:
+          description: Normalised ISO country code only when confidently mapped.
+          type: string
+        sourceProvider:
+          type: string
+        normalisationStatus:
+          $ref: "#/components/schemas/CanonicalValueStatus"
+        normalisationConfidence:
+          maximum: 1
+          minimum: 0
+          type: number
+      required:
+      - normalisationStatus
       type: object
     JobSourceReference:
       properties:
@@ -375,18 +471,50 @@ components:
         provider:
           type: string
         publisher:
+          description: Normalised publisher label.
           type: string
+        rawPublisher:
+          description: Publisher label exactly as supplied by the provider.
+          type: string
+        sourceType:
+          $ref: "#/components/schemas/JobSourceType"
         externalJobId:
           type: string
         listingUrl:
+          description: Validated HTTP(S) source listing URL.
+          format: uri
+          pattern: "^https?://"
           type: string
         applyUrl:
+          description: Validated HTTP(S) application URL.
+          format: uri
+          pattern: "^https?://"
           type: string
         directApply:
           type: boolean
         providerPostedAt:
+          deprecated: true
+          description: Legacy timezone-less value retained for compatibility.
           format: date-time
           type: string
+        providerPostedAtRaw:
+          type: string
+        providerPostedAtUtc:
+          format: date-time
+          type: string
+        providerExpiresAtRaw:
+          type: string
+        providerExpiresAtUtc:
+          format: date-time
+          type: string
+        retrievedAtUtc:
+          format: date-time
+          type: string
+      required:
+      - integrationProvider
+      - provider
+      - sourceType
+      - externalJobId
       type: object
     JobSalary:
       example:
@@ -395,14 +523,22 @@ components:
         currency: currency
       properties:
         min:
+          deprecated: true
+          description: Legacy integer minimum retained for compatibility.
           format: int32
           type: integer
         max:
+          deprecated: true
+          description: Legacy integer maximum retained for compatibility.
           format: int32
           type: integer
         currency:
+          deprecated: true
+          description: Legacy currency alias retained for compatibility.
           type: string
         period:
+          deprecated: true
+          description: Legacy period alias retained for compatibility.
           type: string
         normalisedAnnualMinimum:
           format: double
@@ -413,7 +549,192 @@ components:
         normalisedAnnualMidpoint:
           format: double
           type: number
+        rawMinimum:
+          description: Provider numeric minimum retained at decimal precision.
+          type: number
+        rawMaximum:
+          description: Provider numeric maximum retained at decimal precision.
+          type: number
+        rawCurrency:
+          type: string
+        rawPeriod:
+          type: string
+        minimum:
+          description: Canonical decimal minimum in currencyCode and periodCode.
+          type: number
+        maximum:
+          description: Canonical decimal maximum in currencyCode and periodCode.
+          type: number
+        currencyCode:
+          description: ISO currency code only when supplied or confidently mapped.
+          type: string
+        periodCode:
+          $ref: "#/components/schemas/SalaryPeriodCode"
+        predicted:
+          description: True only when the provider marks salary as predicted.
+          type: boolean
+        sourceProvider:
+          type: string
+        normalisationStatus:
+          $ref: "#/components/schemas/CanonicalValueStatus"
+        normalisationConfidence:
+          maximum: 1
+          minimum: 0
+          type: number
+        normalisationMethod:
+          description: Versioned rule or formula identifier.
+          type: string
+      required:
+      - periodCode
+      - normalisationStatus
       type: object
+    JobExperience:
+      properties:
+        rawValue:
+          type: string
+        level:
+          $ref: "#/components/schemas/ExperienceLevelCode"
+        minimumYears:
+          minimum: 0
+          type: number
+        maximumYears:
+          minimum: 0
+          type: number
+        normalisationConfidence:
+          maximum: 1
+          minimum: 0
+          type: number
+        normalisationStatus:
+          $ref: "#/components/schemas/CanonicalValueStatus"
+        sourceProvider:
+          type: string
+      required:
+      - level
+      - normalisationStatus
+      type: object
+    JobSkill:
+      properties:
+        name:
+          type: string
+        rawName:
+          type: string
+        type:
+          $ref: "#/components/schemas/JobSkillType"
+        normalisationConfidence:
+          maximum: 1
+          minimum: 0
+          type: number
+        normalisationStatus:
+          $ref: "#/components/schemas/CanonicalValueStatus"
+        sourceProvider:
+          type: string
+      required:
+      - type
+      - normalisationStatus
+      type: object
+    JobFieldProvenance:
+      properties:
+        fieldName:
+          type: string
+        sourceProvider:
+          type: string
+        sourceExternalJobId:
+          type: string
+        rawValue:
+          type: string
+        normalisedValue:
+          type: string
+        status:
+          $ref: "#/components/schemas/CanonicalValueStatus"
+        confidence:
+          maximum: 1
+          minimum: 0
+          type: number
+        ruleVersion:
+          type: string
+      required:
+      - fieldName
+      - sourceProvider
+      - status
+      type: object
+    CanonicalValueStatus:
+      enum:
+      - NORMALISED
+      - RAW_ONLY
+      - NOT_PROVIDED
+      - INVALID
+      - UNSUPPORTED
+      - UNKNOWN
+      type: string
+    EmploymentTypeCode:
+      enum:
+      - FULL_TIME
+      - PART_TIME
+      - CONTRACT
+      - TEMPORARY
+      - INTERNSHIP
+      - APPRENTICESHIP
+      - OTHER
+      - UNKNOWN
+      type: string
+    ContractTypeCode:
+      enum:
+      - PERMANENT
+      - FIXED_TERM
+      - CONTRACT
+      - TEMPORARY
+      - ZERO_HOURS
+      - CASUAL
+      - OTHER
+      - UNKNOWN
+      type: string
+    WorkplaceTypeCode:
+      enum:
+      - ON_SITE
+      - HYBRID
+      - REMOTE
+      - OTHER
+      - UNKNOWN
+      type: string
+    ExperienceLevelCode:
+      enum:
+      - ENTRY
+      - JUNIOR
+      - MID
+      - SENIOR
+      - LEAD
+      - MANAGER
+      - DIRECTOR
+      - EXECUTIVE
+      - OTHER
+      - UNKNOWN
+      type: string
+    JobSkillType:
+      enum:
+      - REQUIRED
+      - PREFERRED
+      - OTHER
+      - UNKNOWN
+      type: string
+    JobSourceType:
+      enum:
+      - EMPLOYER
+      - JOB_BOARD
+      - RECRUITER
+      - AGGREGATOR
+      - OTHER
+      - UNKNOWN
+      type: string
+    SalaryPeriodCode:
+      enum:
+      - HOUR
+      - DAY
+      - WEEK
+      - MONTH
+      - YEAR
+      - OTHER
+      - UNKNOWN
+      type: string
     ReedJobSearchResponse:
       example:
         jobs:
@@ -468,6 +789,30 @@ components:
           items:
             $ref: "#/components/schemas/ProviderResultStatus"
           type: array
+        searchStatus:
+          description: COMPLETE when every attempted provider and matching enrichment completed; PARTIAL when usable provider results were returned with a degraded dependency.
+          enum:
+          - COMPLETE
+          - PARTIAL
+          type: string
+        matchingStatus:
+          description: Outcome of optional Job Matching enrichment. Provider results remain usable when matching is unavailable.
+          enum:
+          - COMPLETE
+          - NOT_RUN
+          - UNAVAILABLE
+          - TIMED_OUT
+          - SATURATED
+          type: string
+      required:
+      - jobs
+      - resultsByTargetRole
+      - totalResults
+      - page
+      - pageSize
+      - providerResults
+      - searchStatus
+      - matchingStatus
       type: object
     TargetRoleJobResults:
       properties:
@@ -483,10 +828,23 @@ components:
         provider:
           type: string
         status:
+          enum:
+          - SUCCESS
+          - DISABLED
+          - UNAVAILABLE
+          - TIMED_OUT
+          - SATURATED
+          - RATE_LIMITED
+          - CONFIGURATION_ERROR
+          - REJECTED
           type: string
         rawResultCount:
           format: int32
           type: integer
         errorMessage:
           type: string
+      required:
+      - provider
+      - status
+      - rawResultCount
       type: object

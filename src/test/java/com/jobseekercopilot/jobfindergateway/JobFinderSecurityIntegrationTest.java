@@ -110,6 +110,15 @@ class JobFinderSecurityIntegrationTest {
         assertEquals(
                 "SUCCESS",
                 objectMapper.valueToTree(response.getBody()).at("/providerResults/0/status").asText());
+        assertEquals(
+                "COMPLETE",
+                objectMapper.valueToTree(response.getBody()).at("/searchStatus").asText());
+        assertEquals(
+                "NOT_RUN",
+                objectMapper.valueToTree(response.getBody()).at("/matchingStatus").asText());
+        assertEquals(
+                "2.0",
+                objectMapper.valueToTree(response.getBody()).at("/jobs/0/canonicalSchemaVersion").asText());
         assertNull(DOWNSTREAM.profileAuthorization());
     }
 
@@ -340,10 +349,21 @@ class JobFinderSecurityIntegrationTest {
             respond(exchange, 200, """
                     {
                       "jobs": [{
-                        "id": "job-1",
+                        "canonicalSchemaVersion": "2.0",
                         "canonicalJobId": "canonical-1",
+                        "primarySource": "REED",
+                        "externalJobId": "reed-1",
                         "title": "Platform Engineer",
-                        "sources": []
+                        "employmentTypeCode": "UNKNOWN",
+                        "contractTypeCode": "UNKNOWN",
+                        "workplaceType": "UNKNOWN",
+                        "sources": [],
+                        "skills": [],
+                        "experience": {
+                          "level": "UNKNOWN",
+                          "normalisationStatus": "NOT_PROVIDED"
+                        },
+                        "fieldProvenance": []
                       }],
                       "resultsByTargetRole": [],
                       "totalResults": 1,
@@ -353,7 +373,9 @@ class JobFinderSecurityIntegrationTest {
                         "provider": "REED",
                         "status": "SUCCESS",
                         "rawResultCount": 1
-                      }]
+                      }],
+                      "searchStatus": "COMPLETE",
+                      "matchingStatus": "NOT_RUN"
                     }
                     """);
         }

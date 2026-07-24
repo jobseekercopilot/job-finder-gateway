@@ -51,14 +51,15 @@ Job Finder calls:
 
 ```http
 POST /api/jobs/search
-X-User-Id: <verified token subject>
+Authorization: Bearer <the validated access token>
 Content-Type: application/json
 ```
 
-The current Job Service contract requires `X-User-Id`. Job Finder always
-creates that header from the verified token subject; it never relays the
-browser's value. Replacing this transitional header with authenticated service
-identity is tracked separately by `JOBSVC-01`.
+Job Finder creates a generated Job Service client per request before assigning
+the Bearer token, so mutable authentication state is not shared between users.
+It never forwards the browser's `X-User-Id`. Job Service independently verifies
+the token signature, issuer, audience, expiry, nonblank subject and access-token
+type, then derives the search identity only from `sub`.
 
 The request is converted into the model generated from the pinned Job Service
 contract. The generated response is returned directly, preserving:
@@ -111,6 +112,7 @@ Contract policy checks reject:
 - missing, symbolic, or checksum-drifted inputs
 - unexpected producer revision metadata
 - removal of the required search or profile operations
+- removal of either downstream Bearer authentication boundary
 - removal of key Job Search request or response boundary fields
 
 ## Errors and ownership constraints

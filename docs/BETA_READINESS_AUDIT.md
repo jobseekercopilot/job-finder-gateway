@@ -38,8 +38,11 @@ Service, and maps its response. It does not call providers directly.
   bounded so the pre-filter handler warning cannot emit a raw resource path.
 - The validated Bearer token is forwarded by a per-request generated client to
   User Profile; mutable authentication state is not shared between requests.
-- Job Service receives the validated subject, and the browser-supplied identity
-  header is never relayed.
+- The validated Bearer token is forwarded by a separate per-request generated
+  client to Job Service; mutable token state is not shared and the
+  browser-supplied identity header is never relayed.
+- Job Service independently verifies the signed access token and derives the
+  search identity only from its subject.
 - Job Service and User Profile clients are generated at build time from exact,
   checksum-protected producer contracts. Local JAR and `systemPath`
   dependencies have been removed.

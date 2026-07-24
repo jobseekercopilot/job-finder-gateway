@@ -1,8 +1,8 @@
 package com.jobseekercopilot.jobfindergateway.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.jobseekercopilot.generated.jobservice.api.JobSearchApi;
 import com.jobseekercopilot.generated.jobservice.model.ReedJobSearchResponse;
+import com.jobseekercopilot.jobfindergateway.client.JobServiceClientFactory;
 import com.jobseekercopilot.jobfindergateway.client.UserProfileClientFactory;
 import com.jobseekercopilot.jobfindergateway.model.dto.ApplicationRecordResponse;
 import com.jobseekercopilot.jobfindergateway.model.dto.JobSearchRequest;
@@ -58,20 +58,20 @@ public class JobSearchController {
             "{\"error\":\"SERVICE_UNAVAILABLE\",\"message\":\"Application ownership could not be verified\"}";
 
     private final UserProfileClientFactory userProfileClientFactory;
-    private final JobSearchApi jobSearchApi;
+    private final JobServiceClientFactory jobServiceClientFactory;
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate;
     private final String applicationTrackerBaseUrl;
     private final String documentStoreBaseUrl;
 
     public JobSearchController(UserProfileClientFactory userProfileClientFactory,
-                               JobSearchApi jobSearchApi,
+                               JobServiceClientFactory jobServiceClientFactory,
                                ObjectMapper objectMapper,
                                RestTemplate restTemplate,
                                @Value("${services.application-tracker.url}") String applicationTrackerBaseUrl,
                                @Value("${services.document-store.url:http://document-store-service:8089}") String documentStoreBaseUrl) {
         this.userProfileClientFactory = userProfileClientFactory;
-        this.jobSearchApi = jobSearchApi;
+        this.jobServiceClientFactory = jobServiceClientFactory;
         this.objectMapper = objectMapper;
         this.restTemplate = restTemplate;
         this.applicationTrackerBaseUrl = applicationTrackerBaseUrl;
@@ -85,7 +85,7 @@ public class JobSearchController {
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ReedJobSearchResponse.class))),
             @ApiResponse(responseCode = "400", description = "Invalid request or incomplete user profile",
                     content = @Content(mediaType = "application/json")),
-            @ApiResponse(responseCode = "401", description = "Missing or invalid user ID",
+            @ApiResponse(responseCode = "401", description = "Missing or invalid access token",
                     content = @Content(mediaType = "application/json")),
             @ApiResponse(responseCode = "503", description = "Downstream service unavailable",
                     content = @Content(mediaType = "application/json"))
@@ -143,7 +143,7 @@ public class JobSearchController {
 
             try {
                 ResponseEntity<ReedJobSearchResponse> response =
-                        searchDownstream(userId, fromProfile(userProfile));
+                        searchDownstream(accessToken, fromProfile(userProfile));
                 log.info("job-finder-gateway job search completed userId={} finalCount={} durationMs={}",
                         userId,
                         response.getBody() == null ? null : response.getBody().getTotalResults(),
@@ -162,7 +162,8 @@ public class JobSearchController {
 
         // Use the request body from the frontend (preferred flow)
         try {
-            ResponseEntity<ReedJobSearchResponse> response = searchDownstream(userId, searchRequest);
+            ResponseEntity<ReedJobSearchResponse> response =
+                    searchDownstream(accessToken, searchRequest);
             log.info("job-finder-gateway job search completed userId={} finalCount={} durationMs={}",
                     userId,
                     response.getBody() == null ? null : response.getBody().getTotalResults(),
@@ -180,9 +181,10 @@ public class JobSearchController {
     }
 
     private ResponseEntity<ReedJobSearchResponse> searchDownstream(
-            String userId,
+            Jwt accessToken,
             JobSearchRequest request) {
         long startedAt = System.nanoTime();
+        String userId = accessToken.getSubject();
         int roles = request.getAspirations() != null
                 && request.getAspirations().getDesiredRoles() != null
                 ? request.getAspirations().getDesiredRoles().size()
@@ -191,7 +193,9 @@ public class JobSearchController {
         var generatedRequest = objectMapper.convertValue(
                 request,
                 com.jobseekercopilot.generated.jobservice.model.JobSearchRequest.class);
-        ReedJobSearchResponse response = jobSearchApi.searchJobs(generatedRequest, userId);
+        ReedJobSearchResponse response = jobServiceClientFactory
+                .authenticated(accessToken.getTokenValue())
+                .searchJobs(generatedRequest);
         log.info("job-service returned status=200 userId={} totalResults={} durationMs={}",
                 userId,
                 response == null ? null : response.getTotalResults(),

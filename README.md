@@ -35,6 +35,10 @@ Application list, status, and generated-withdraw routes derive ownership from
 the validated token subject. Job Finder forwards that Bearer token to
 Application Tracker, pre-authorizes resource mutations, denies foreign and
 unknown IDs identically, and forwards the token to generated-document cleanup.
+Job Finder also creates a request-scoped generated Job Service client and
+forwards the original Bearer token; it never relays a caller-supplied identity
+header. Job Service independently verifies the token and derives search
+identity from its subject.
 Application Tracker must enforce the same subject/resource relationship
 atomically; that dependency is tracked by
 [`APP-03`](https://github.com/jobseekercopilot/application-tracker-service/issues/4).

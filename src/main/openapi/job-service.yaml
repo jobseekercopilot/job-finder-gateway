@@ -27,20 +27,9 @@ paths:
   /api/jobs/search:
     post:
       description: "Searches for jobs based on user aspirations and work preferences.\
-        \ Requires X-User-Id header for authentication. This endpoint validates the\
-        \ request, transforms it to the external API format, and returns matching\
-        \ job listings."
+        \ Requires a signed end-user Bearer access token. The verified JWT subject\
+        \ is the only search identity."
       operationId: searchJobs
-      parameters:
-      - description: User ID for authentication
-        example: user-123
-        explode: false
-        in: header
-        name: X-User-Id
-        required: false
-        schema:
-          type: string
-        style: simple
       requestBody:
         content:
           application/json:
@@ -48,6 +37,12 @@ paths:
               $ref: "#/components/schemas/JobSearchRequest"
         required: true
       responses:
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthenticationError"
+          description: Missing or invalid Bearer access token
         "503":
           content:
             '*/*':
@@ -75,11 +70,37 @@ paths:
       summary: Search for jobs
       tags:
       - Job Search
+      security:
+      - bearerAuth: []
       x-content-type: application/json
       x-accepts:
       - '*/*'
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   schemas:
+    AuthenticationError:
+      properties:
+        schemaVersion:
+          example: "1"
+          type: string
+        code:
+          example: JOB_SERVICE_AUTHENTICATION_REQUIRED
+          type: string
+        message:
+          example: A valid Bearer access token is required.
+          type: string
+        correlationId:
+          type: string
+      required:
+      - schemaVersion
+      - code
+      - message
+      - correlationId
+      type: object
     ErrorResponse:
       example:
         error: error

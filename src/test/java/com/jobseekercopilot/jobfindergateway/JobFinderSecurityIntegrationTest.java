@@ -98,7 +98,8 @@ class JobFinderSecurityIntegrationTest {
                 """);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertEquals("alice", DOWNSTREAM.jobUserId());
+        assertEquals("Bearer " + token, DOWNSTREAM.jobAuthorization());
+        assertNull(DOWNSTREAM.jobUserId());
         JsonNode forwarded = objectMapper.readTree(DOWNSTREAM.jobBody());
         assertEquals("SW1A 1AA", forwarded.at("/homeLocation/postcode").asText());
         assertEquals("REED", forwarded.at("/selectedProviders/0").asText());
@@ -124,6 +125,7 @@ class JobFinderSecurityIntegrationTest {
 
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
         assertEquals("Bearer " + token, DOWNSTREAM.profileAuthorization());
+        assertNull(DOWNSTREAM.jobAuthorization());
         assertNull(DOWNSTREAM.jobUserId());
     }
 
@@ -286,6 +288,7 @@ class JobFinderSecurityIntegrationTest {
         assertFalse(response.getBody().toString().contains("subject"));
         assertFalse(response.getBody().toString().contains("Jwt"));
         assertNull(DOWNSTREAM.profileAuthorization());
+        assertNull(DOWNSTREAM.jobAuthorization());
         assertNull(DOWNSTREAM.jobUserId());
     }
 
@@ -299,6 +302,7 @@ class JobFinderSecurityIntegrationTest {
     private static final class TestDownstreamServer implements AutoCloseable {
 
         private final AtomicReference<String> profileAuthorization = new AtomicReference<>();
+        private final AtomicReference<String> jobAuthorization = new AtomicReference<>();
         private final AtomicReference<String> jobUserId = new AtomicReference<>();
         private final AtomicReference<String> jobBody = new AtomicReference<>();
         private final List<DownstreamCall> applicationCalls = new CopyOnWriteArrayList<>();
@@ -328,6 +332,7 @@ class JobFinderSecurityIntegrationTest {
         }
 
         private void jobs(HttpExchange exchange) throws IOException {
+            jobAuthorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
             jobUserId.set(exchange.getRequestHeaders().getFirst("X-User-Id"));
             jobBody.set(new String(
                     exchange.getRequestBody().readAllBytes(),
@@ -442,6 +447,7 @@ class JobFinderSecurityIntegrationTest {
 
         void reset() {
             profileAuthorization.set(null);
+            jobAuthorization.set(null);
             jobUserId.set(null);
             jobBody.set(null);
             applicationCalls.clear();
@@ -450,6 +456,10 @@ class JobFinderSecurityIntegrationTest {
 
         String profileAuthorization() {
             return profileAuthorization.get();
+        }
+
+        String jobAuthorization() {
+            return jobAuthorization.get();
         }
 
         String jobUserId() {

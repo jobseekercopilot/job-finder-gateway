@@ -43,6 +43,10 @@ Application Tracker must enforce the same subject/resource relationship
 atomically; that dependency is tracked by
 [`APP-03`](https://github.com/jobseekercopilot/application-tracker-service/issues/4).
 
+The approved end-to-end request path and responsibility owners are defined in
+the Infrastructure
+[Job Search architecture ADR](https://github.com/jobseekercopilot/infrastructure/blob/develop/docs/adr/0001-job-search-architecture-and-ownership.md).
+
 Swagger UI is exposed at `/swagger-ui/index.html` and generated OpenAPI at
 `/v3/api-docs`; both require a valid access token. `CONTRACT.md` documents the
 identity and generated-client boundaries.

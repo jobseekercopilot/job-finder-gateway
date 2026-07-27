@@ -86,4 +86,48 @@ if "$repository_root/scripts/verify-contracts.sh" "$temporary_dir/job-authentica
     exit 1
 fi
 
+copy_contracts "$temporary_dir/saved-operation"
+sed 's/operationId: save/operationId: removedSave/' \
+    "$temporary_dir/saved-operation/job-service.yaml" \
+    > "$temporary_dir/saved-operation/changed.yaml"
+mv "$temporary_dir/saved-operation/changed.yaml" \
+    "$temporary_dir/saved-operation/job-service.yaml"
+(cd "$temporary_dir/saved-operation" && sha256sum job-service.yaml user-profile-service.json > SHA256SUMS)
+if "$repository_root/scripts/verify-contracts.sh" "$temporary_dir/saved-operation" >/dev/null 2>&1; then
+    echo "contract policy negative test accepted removal of saved-job creation" >&2
+    exit 1
+fi
+
+copy_contracts "$temporary_dir/saved-identity"
+sed 's/^        contentSha256:$/        removedContentSha256:/' \
+    "$temporary_dir/saved-identity/job-service.yaml" \
+    > "$temporary_dir/saved-identity/changed.yaml"
+mv "$temporary_dir/saved-identity/changed.yaml" \
+    "$temporary_dir/saved-identity/job-service.yaml"
+(cd "$temporary_dir/saved-identity" && sha256sum job-service.yaml user-profile-service.json > SHA256SUMS)
+if "$repository_root/scripts/verify-contracts.sh" "$temporary_dir/saved-identity" >/dev/null 2>&1; then
+    echo "contract policy negative test accepted removal of saved-job content identity" >&2
+    exit 1
+fi
+
+copy_contracts "$temporary_dir/saved-authentication"
+awk '
+    $0 == "  /api/jobs/saved:" { in_saved_jobs = 1 }
+    $0 == "  /api/jobs/saved/{savedJobId}:" { in_saved_jobs = 0 }
+    in_saved_jobs && !removed && $0 == "      - bearerAuth: []" {
+        print "      - removedBearerAuth: []"
+        removed = 1
+        next
+    }
+    { print }
+' "$temporary_dir/saved-authentication/job-service.yaml" \
+    > "$temporary_dir/saved-authentication/changed.yaml"
+mv "$temporary_dir/saved-authentication/changed.yaml" \
+    "$temporary_dir/saved-authentication/job-service.yaml"
+(cd "$temporary_dir/saved-authentication" && sha256sum job-service.yaml user-profile-service.json > SHA256SUMS)
+if "$repository_root/scripts/verify-contracts.sh" "$temporary_dir/saved-authentication" >/dev/null 2>&1; then
+    echo "contract policy negative test accepted removal of saved-job Bearer authentication" >&2
+    exit 1
+fi
+
 echo "contract policy tests passed"

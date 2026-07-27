@@ -30,6 +30,25 @@ class OpenApiExportTest {
                 contract.at("/components/securitySchemes/bearerAuth/scheme").asText());
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at("/security/0/bearerAuth").isArray());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "1.2.0",
+                contract.at("/info/version").asText());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at("/paths/~1api~1jobs~1saved/post").isObject());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at("/paths/~1api~1jobs~1saved/get").isObject());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at("/paths/~1api~1jobs~1saved~1{savedJobId}/get").isObject());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at("/paths/~1api~1jobs~1saved~1{savedJobId}/delete").isObject());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at("/components/schemas/SavedJobResponse/properties/savedJobId")
+                        .isObject());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "CREATED",
+                contract.at(
+                        "/paths/~1api~1jobs~1saved/post/responses/201/headers/X-Saved-Job-Outcome/schema/enum/0")
+                        .asText());
         Files.createDirectories(Path.of("target"));
         Files.writeString(Path.of("target/openapi.json"), spec);
         org.junit.jupiter.api.Assertions.assertEquals(

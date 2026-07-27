@@ -24,6 +24,6 @@ public class OpenApiConfig {
                 .info(new Info()
                         .title("Jobseeker Copilot - Job Finder Gateway API")
                         .description("Gateway API for job search orchestration. Coordinates between user profile, job, and location services.")
-                        .version("1.1.0"));
+                        .version("1.2.0"));
     }
 }

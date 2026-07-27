@@ -9,20 +9,21 @@ info:
     It transforms user profile data (aspirations, work preferences) into
     bounded concurrent searches and returns canonical job results.
 
-    This service does NOT:
-    - Store jobs in a local database
-    - Call external APIs directly
-    - Index or rank jobs
+    Saved jobs are owner-scoped, durable selections backed by immutable
+    canonical/source snapshots. The service does not call external provider
+    APIs directly or index/rank jobs.
   license:
     name: Proprietary source-available
   title: Jobseeker Copilot - Job Service API
-  version: 1.2.0
+  version: 2.0.0
 servers:
 - description: Generated server url
   url: http://localhost:8086
 tags:
 - description: Endpoints for searching job listings
   name: Job Search
+- description: Owner-scoped immutable canonical job snapshots
+  name: Saved Jobs
 paths:
   /api/jobs/search:
     post:
@@ -75,6 +76,173 @@ paths:
       x-content-type: application/json
       x-accepts:
       - '*/*'
+  /api/jobs/saved:
+    get:
+      operationId: list
+      parameters:
+      - in: query
+        name: page
+        required: false
+        schema:
+          default: 0
+          format: int32
+          minimum: 0
+          type: integer
+      - in: query
+        name: size
+        required: false
+        schema:
+          default: 20
+          format: int32
+          maximum: 100
+          minimum: 1
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedJobPageResponse"
+          description: Active saved jobs owned by the authenticated user
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Invalid page or size
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthenticationError"
+          description: Missing or invalid Bearer access token
+      security:
+      - bearerAuth: []
+      summary: List the current user's active saved jobs
+      tags:
+      - Saved Jobs
+    post:
+      description: |
+        Creates or reactivates one owner-scoped saved job. Identical canonical
+        content replays the same immutable snapshot; changed source content
+        appends a snapshot without deleting earlier provenance. The
+        X-Saved-Job-Outcome response header is CREATED, REPLAYED, UPDATED or
+        REACTIVATED.
+      operationId: save
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Job"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedJobResponse"
+          description: Saved job created
+          headers:
+            X-Saved-Job-Outcome:
+              schema:
+                enum:
+                - CREATED
+                type: string
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedJobResponse"
+          description: Existing saved job replayed, updated or reactivated
+          headers:
+            X-Saved-Job-Outcome:
+              schema:
+                enum:
+                - REPLAYED
+                - UPDATED
+                - REACTIVATED
+                type: string
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Invalid or unsupported canonical job snapshot
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthenticationError"
+          description: Missing or invalid Bearer access token
+      security:
+      - bearerAuth: []
+      summary: Save a canonical job snapshot
+      tags:
+      - Saved Jobs
+      x-content-type: application/json
+  /api/jobs/saved/{savedJobId}:
+    get:
+      description: |
+        Returns the current immutable canonical/source snapshot. Missing,
+        unsaved and other-user identifiers return the same not-found response.
+      operationId: get
+      parameters:
+      - in: path
+        name: savedJobId
+        required: true
+        schema:
+          format: uuid
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedJobResponse"
+          description: Saved job found
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthenticationError"
+          description: Missing or invalid Bearer access token
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Saved job not found
+      security:
+      - bearerAuth: []
+      summary: Retrieve an owner-scoped saved job snapshot
+      tags:
+      - Saved Jobs
+    delete:
+      description: |
+        Idempotently removes the saved job from the owner's active list while
+        retaining immutable snapshot provenance.
+      operationId: unsave
+      parameters:
+      - in: path
+        name: savedJobId
+        required: true
+        schema:
+          format: uuid
+          type: string
+      responses:
+        "204":
+          description: Job is not active
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthenticationError"
+          description: Missing or invalid Bearer access token
+      security:
+      - bearerAuth: []
+      summary: Unsave a job
+      tags:
+      - Saved Jobs
 components:
   securitySchemes:
     bearerAuth:
@@ -822,6 +990,83 @@ components:
           items:
             $ref: "#/components/schemas/Job"
           type: array
+      type: object
+    SavedJobResponse:
+      properties:
+        savedJobId:
+          format: uuid
+          type: string
+        canonicalJobId:
+          type: string
+        canonicalSchemaVersion:
+          example: "2.0"
+          type: string
+        snapshotVersion:
+          format: int64
+          minimum: 1
+          type: integer
+        contentVersion:
+          pattern: "^sha256:[a-f0-9]{64}$"
+          type: string
+        contentSha256:
+          pattern: "^[a-f0-9]{64}$"
+          type: string
+        capturedAt:
+          format: date-time
+          type: string
+        sourceRetrievedAt:
+          format: date-time
+          type: string
+        sourceState:
+          enum:
+          - SNAPSHOT
+          - EXPIRED_SNAPSHOT
+          type: string
+        savedAt:
+          format: date-time
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+        job:
+          $ref: "#/components/schemas/Job"
+      required:
+      - savedJobId
+      - canonicalJobId
+      - canonicalSchemaVersion
+      - snapshotVersion
+      - contentVersion
+      - contentSha256
+      - capturedAt
+      - sourceState
+      - savedAt
+      - updatedAt
+      - job
+      type: object
+    SavedJobPageResponse:
+      properties:
+        items:
+          items:
+            $ref: "#/components/schemas/SavedJobResponse"
+          type: array
+        page:
+          format: int32
+          type: integer
+        size:
+          format: int32
+          type: integer
+        totalElements:
+          format: int64
+          type: integer
+        totalPages:
+          format: int32
+          type: integer
+      required:
+      - items
+      - page
+      - size
+      - totalElements
+      - totalPages
       type: object
     ProviderResultStatus:
       properties:

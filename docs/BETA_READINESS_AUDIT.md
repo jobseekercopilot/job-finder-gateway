@@ -41,6 +41,14 @@ Service, and maps its response. It does not call providers directly.
 - The validated Bearer token is forwarded by a separate per-request generated
   client to Job Service; mutable token state is not shared and the
   browser-supplied identity header is never relayed.
+- The pinned Job Service 2.0.0 contract now supplies generated save, list,
+  retrieve and unsave operations. Job Finder preserves the server-owned
+  `savedJobId`, immutable snapshot identity/version/digest and save outcome
+  while redacting saved-job IDs from request logs.
+- Saved-job integration tests cover authentication, caller identity-header
+  stripping, per-request Bearer forwarding, create/replay outcomes, list/get,
+  idempotent delete, non-enumerating not-found behavior and redacted dependency
+  failure.
 - Job Service independently verifies the signed access token and derives the
   search identity only from its subject.
 - Job Service and User Profile clients are generated at build time from exact,
@@ -51,8 +59,8 @@ Service, and maps its response. It does not call providers directly.
 - Integration tests cover valid, missing, malformed, expired, forged,
   unknown-key, wrong-algorithm, wrong-issuer, wrong-audience, and refresh-token
   cases, plus header spoofing, downstream identity propagation, cross-user
-  application denial, non-enumerating unknown IDs, Bearer forwarding, and log
-  path redaction.
+  application denial, non-enumerating application/saved-job IDs, Bearer
+  forwarding, and log path redaction.
 
 ## Target boundary
 

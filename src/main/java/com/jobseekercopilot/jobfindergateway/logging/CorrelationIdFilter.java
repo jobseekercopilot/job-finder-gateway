@@ -25,6 +25,8 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
     private static final Logger log = LoggerFactory.getLogger(CorrelationIdFilter.class);
     private static final Pattern UUID_PATH_SEGMENT = Pattern.compile(
             "(?i)(?<=/)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?=/|$)");
+    private static final Pattern SAVED_JOB_PATH_SEGMENT = Pattern.compile(
+            "(?i)(?<=/api/jobs/saved/)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?=/|$)");
     private static final Pattern USER_PATH_SEGMENT = Pattern.compile(
             "(?<=/applications/user/)[^/]+");
 
@@ -66,8 +68,10 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
     }
 
     static String redactedPath(String path) {
+        String withoutSavedJobIds =
+                SAVED_JOB_PATH_SEGMENT.matcher(path).replaceAll("{savedJobId}");
         String withoutApplicationIds =
-                UUID_PATH_SEGMENT.matcher(path).replaceAll("{applicationId}");
+                UUID_PATH_SEGMENT.matcher(withoutSavedJobIds).replaceAll("{applicationId}");
         return USER_PATH_SEGMENT.matcher(withoutApplicationIds).replaceAll("{subject}");
     }
 }

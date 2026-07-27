@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,6 +44,14 @@ class JobFinderSecurityIntegrationTest {
             UUID.fromString("00000000-0000-0000-0000-000000000003");
     private static final UUID PENDING_WITHDRAWAL_APPLICATION =
             UUID.fromString("00000000-0000-0000-0000-000000000004");
+    private static final UUID SAVED_JOB =
+            UUID.fromString("10000000-0000-4000-8000-000000000001");
+    private static final UUID MISSING_SAVED_JOB =
+            UUID.fromString("10000000-0000-4000-8000-000000000002");
+    private static final UUID OTHER_OWNER_SAVED_JOB =
+            UUID.fromString("10000000-0000-4000-8000-000000000003");
+    private static final UUID UNAVAILABLE_SAVED_JOB =
+            UUID.fromString("10000000-0000-4000-8000-000000000004");
     private static final TestJwksServer JWKS = new TestJwksServer();
     private static final TestDownstreamServer DOWNSTREAM = new TestDownstreamServer();
 
@@ -137,6 +146,111 @@ class JobFinderSecurityIntegrationTest {
         assertEquals("Bearer " + token, DOWNSTREAM.profileAuthorization());
         assertNull(DOWNSTREAM.jobAuthorization());
         assertNull(DOWNSTREAM.jobUserId());
+    }
+
+    @Test
+    void savedJobBoundaryPreservesOwnerTokenOutcomeAndServerIdentity() {
+        String token = JWKS.validToken("saved-owner");
+        HttpHeaders headers = authenticated(token);
+        headers.set("X-User-Id", "victim");
+        HttpEntity<String> request = new HttpEntity<>(canonicalJob(), headers);
+
+        ResponseEntity<Map> created = restTemplate.exchange(
+                "/api/jobs/saved",
+                HttpMethod.POST,
+                request,
+                Map.class);
+        ResponseEntity<Map> replayed = restTemplate.exchange(
+                "/api/jobs/saved",
+                HttpMethod.POST,
+                request,
+                Map.class);
+        ResponseEntity<Map> listed = restTemplate.exchange(
+                "/api/jobs/saved?page=0&size=20",
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class);
+        ResponseEntity<Map> retrieved = restTemplate.exchange(
+                "/api/jobs/saved/" + SAVED_JOB,
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class);
+        ResponseEntity<Void> unsaved = restTemplate.exchange(
+                "/api/jobs/saved/" + SAVED_JOB,
+                HttpMethod.DELETE,
+                new HttpEntity<>(headers),
+                Void.class);
+
+        assertEquals(HttpStatus.CREATED, created.getStatusCode());
+        assertEquals("CREATED", created.getHeaders().getFirst("X-Saved-Job-Outcome"));
+        assertEquals(SAVED_JOB.toString(), created.getBody().get("savedJobId"));
+        assertEquals(HttpStatus.OK, replayed.getStatusCode());
+        assertEquals("REPLAYED", replayed.getHeaders().getFirst("X-Saved-Job-Outcome"));
+        assertEquals(created.getBody(), replayed.getBody());
+        assertEquals(
+                SAVED_JOB.toString(),
+                objectMapper.valueToTree(listed.getBody()).at("/items/0/savedJobId").asText());
+        assertEquals(SAVED_JOB.toString(), retrieved.getBody().get("savedJobId"));
+        assertEquals(
+                "canonical-1",
+                objectMapper.valueToTree(retrieved.getBody()).at("/job/canonicalJobId").asText());
+        assertEquals(HttpStatus.NO_CONTENT, unsaved.getStatusCode());
+
+        assertEquals(5, DOWNSTREAM.savedJobCalls().size());
+        assertTrue(DOWNSTREAM.savedJobCalls().stream().allMatch(call ->
+                call.authorization().equals("Bearer " + token)
+                        && call.userId() == null));
+        assertTrue(DOWNSTREAM.savedJobCalls().stream()
+                .filter(call -> call.method().equals("POST"))
+                .allMatch(call -> call.body().contains("\"canonicalJobId\":\"canonical-1\"")));
+    }
+
+    @Test
+    void savedJobMissingAndOtherOwnerIdsAreNonEnumerating() {
+        HttpHeaders headers = authenticated(JWKS.validToken("saved-owner"));
+
+        ResponseEntity<Map> missing = restTemplate.exchange(
+                "/api/jobs/saved/" + MISSING_SAVED_JOB,
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class);
+        ResponseEntity<Map> otherOwner = restTemplate.exchange(
+                "/api/jobs/saved/" + OTHER_OWNER_SAVED_JOB,
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class);
+
+        assertEquals(HttpStatus.NOT_FOUND, missing.getStatusCode());
+        assertEquals(HttpStatus.NOT_FOUND, otherOwner.getStatusCode());
+        assertEquals(missing.getBody(), otherOwner.getBody());
+        assertEquals("SAVED_JOB_NOT_FOUND", missing.getBody().get("error"));
+    }
+
+    @Test
+    void savedJobDependencyFailureIsStableAndDoesNotLeakUpstreamDetail() {
+        HttpHeaders headers = authenticated(JWKS.validToken("saved-owner"));
+
+        ResponseEntity<Map> response = restTemplate.exchange(
+                "/api/jobs/saved/" + UNAVAILABLE_SAVED_JOB,
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class);
+
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, response.getStatusCode());
+        assertEquals("SAVED_JOB_SERVICE_UNAVAILABLE", response.getBody().get("error"));
+        assertFalse(response.getBody().toString().contains("database-host"));
+    }
+
+    @Test
+    void savedJobRoutesRequireAuthenticationBeforeCallingJobService() {
+        ResponseEntity<Map> response = restTemplate.exchange(
+                "/api/jobs/saved",
+                HttpMethod.POST,
+                new HttpEntity<>(canonicalJob()),
+                Map.class);
+
+        assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
+        assertTrue(DOWNSTREAM.savedJobCalls().isEmpty());
     }
 
     @Test
@@ -326,6 +440,31 @@ class JobFinderSecurityIntegrationTest {
         return headers;
     }
 
+    private static String canonicalJob() {
+        return """
+                {
+                  "canonicalSchemaVersion": "2.0",
+                  "canonicalJobId": "canonical-1",
+                  "primarySource": "REED",
+                  "externalJobId": "reed-1",
+                  "title": "Platform Engineer",
+                  "companyName": "Example Ltd",
+                  "location": "London",
+                  "description": "Build reliable services.",
+                  "employmentTypeCode": "UNKNOWN",
+                  "contractTypeCode": "UNKNOWN",
+                  "workplaceType": "UNKNOWN",
+                  "sources": [],
+                  "skills": [],
+                  "experience": {
+                    "level": "UNKNOWN",
+                    "normalisationStatus": "NOT_PROVIDED"
+                  },
+                  "fieldProvenance": []
+                }
+                """;
+    }
+
     private static final class TestDownstreamServer implements AutoCloseable {
 
         private final AtomicReference<String> profileAuthorization = new AtomicReference<>();
@@ -334,6 +473,8 @@ class JobFinderSecurityIntegrationTest {
         private final AtomicReference<String> jobBody = new AtomicReference<>();
         private final List<DownstreamCall> applicationCalls = new CopyOnWriteArrayList<>();
         private final List<DownstreamCall> documentCalls = new CopyOnWriteArrayList<>();
+        private final List<DownstreamCall> savedJobCalls = new CopyOnWriteArrayList<>();
+        private final AtomicInteger savedJobCreates = new AtomicInteger();
         private HttpServer server;
 
         synchronized String baseUrl() {
@@ -342,6 +483,7 @@ class JobFinderSecurityIntegrationTest {
                     server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
                     server.createContext("/api/profiles/me", this::profile);
                     server.createContext("/api/jobs/search", this::jobs);
+                    server.createContext("/api/jobs/saved", this::savedJobs);
                     server.createContext("/api/v1/applications", this::applications);
                     server.createContext("/api/v1/documents", this::documents);
                     server.start();
@@ -463,6 +605,57 @@ class JobFinderSecurityIntegrationTest {
             respond(exchange, 404, "{\"error\":\"NOT_FOUND\"}");
         }
 
+        private void savedJobs(HttpExchange exchange) throws IOException {
+            DownstreamCall call = capture(exchange);
+            savedJobCalls.add(call);
+            String path = call.path();
+
+            if (path.equals("/api/jobs/saved") && call.method().equals("POST")) {
+                boolean created = savedJobCreates.incrementAndGet() == 1;
+                exchange.getResponseHeaders().set(
+                        "X-Saved-Job-Outcome",
+                        created ? "CREATED" : "REPLAYED");
+                respond(exchange, created ? 201 : 200, savedJob());
+                return;
+            }
+            if (path.equals("/api/jobs/saved") && call.method().equals("GET")) {
+                respond(exchange, 200, """
+                        {
+                          "items": [%s],
+                          "page": 0,
+                          "size": 20,
+                          "totalElements": 1,
+                          "totalPages": 1
+                        }
+                        """.formatted(savedJob()));
+                return;
+            }
+            if (path.endsWith(UNAVAILABLE_SAVED_JOB.toString())) {
+                respond(exchange, 503, """
+                        {
+                          "error": "INTERNAL_FAILURE",
+                          "message": "database-host refused the connection"
+                        }
+                        """);
+                return;
+            }
+            if (path.endsWith(SAVED_JOB.toString())
+                    && call.method().equals("GET")) {
+                respond(exchange, 200, savedJob());
+                return;
+            }
+            if (call.method().equals("DELETE")) {
+                noContent(exchange);
+                return;
+            }
+            respond(exchange, 404, """
+                    {
+                      "error": "SAVED_JOB_NOT_FOUND",
+                      "message": "Saved job was not found."
+                    }
+                    """);
+        }
+
         private void documents(HttpExchange exchange) throws IOException {
             documentCalls.add(capture(exchange));
             exchange.sendResponseHeaders(204, -1);
@@ -474,6 +667,7 @@ class JobFinderSecurityIntegrationTest {
                     exchange.getRequestMethod(),
                     exchange.getRequestURI().getPath(),
                     exchange.getRequestHeaders().getFirst("Authorization"),
+                    exchange.getRequestHeaders().getFirst("X-User-Id"),
                     new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
         }
 
@@ -495,6 +689,25 @@ class JobFinderSecurityIntegrationTest {
                     """.formatted(id, owner, status);
         }
 
+        private String savedJob() {
+            return """
+                    {
+                      "savedJobId": "%s",
+                      "canonicalJobId": "canonical-1",
+                      "canonicalSchemaVersion": "2.0",
+                      "snapshotVersion": 1,
+                      "contentVersion": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                      "contentSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                      "capturedAt": "2026-07-27T08:00:00Z",
+                      "sourceRetrievedAt": "2026-07-27T07:55:00Z",
+                      "sourceState": "SNAPSHOT",
+                      "savedAt": "2026-07-27T08:00:00Z",
+                      "updatedAt": "2026-07-27T08:00:00Z",
+                      "job": %s
+                    }
+                    """.formatted(SAVED_JOB, canonicalJob());
+        }
+
         private static void respond(HttpExchange exchange, int status, String response)
                 throws IOException {
             exchange.getRequestBody().close();
@@ -505,6 +718,12 @@ class JobFinderSecurityIntegrationTest {
             exchange.close();
         }
 
+        private static void noContent(HttpExchange exchange) throws IOException {
+            exchange.getRequestBody().close();
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        }
+
         void reset() {
             profileAuthorization.set(null);
             jobAuthorization.set(null);
@@ -512,6 +731,8 @@ class JobFinderSecurityIntegrationTest {
             jobBody.set(null);
             applicationCalls.clear();
             documentCalls.clear();
+            savedJobCalls.clear();
+            savedJobCreates.set(0);
         }
 
         String profileAuthorization() {
@@ -538,6 +759,10 @@ class JobFinderSecurityIntegrationTest {
             return List.copyOf(documentCalls);
         }
 
+        List<DownstreamCall> savedJobCalls() {
+            return List.copyOf(savedJobCalls);
+        }
+
         @Override
         public synchronized void close() {
             if (server != null) {
@@ -551,6 +776,7 @@ class JobFinderSecurityIntegrationTest {
             String method,
             String path,
             String authorization,
+            String userId,
             String body) {
     }
 }

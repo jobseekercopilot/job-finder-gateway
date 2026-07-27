@@ -16,6 +16,10 @@ class CorrelationIdFilterTest {
                 CorrelationIdFilter.redactedPath(
                         "/api/jobs/applications/00000000-0000-0000-0000-000000000001/status"));
         assertEquals(
+                "/api/jobs/saved/{savedJobId}",
+                CorrelationIdFilter.redactedPath(
+                        "/api/jobs/saved/10000000-0000-4000-8000-000000000001"));
+        assertEquals(
                 "/api/jobs/search",
                 CorrelationIdFilter.redactedPath("/api/jobs/search"));
     }

@@ -12,6 +12,8 @@ management:
         include: health
 
 job-finder:
+  http:
+    max-search-request-bytes: ${JOB_FINDER_MAX_SEARCH_REQUEST_BYTES:65536}
   security:
     jwk-set-uri: ${AUTH_JWKS_URI:http://authentication-service:8084/.well-known/jwks.json}
     issuer: ${JOB_FINDER_JWT_ISSUER:job-seeker-copilot-authentication}

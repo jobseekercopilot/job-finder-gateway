@@ -31,7 +31,7 @@ class OpenApiExportTest {
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at("/security/0/bearerAuth").isArray());
         org.junit.jupiter.api.Assertions.assertEquals(
-                "1.3.0",
+                "1.4.0",
                 contract.at("/info/version").asText());
         org.junit.jupiter.api.Assertions.assertEquals(
                 1,
@@ -48,6 +48,56 @@ class OpenApiExportTest {
                 contract.at(
                         "/components/schemas/JobSearchRequest/properties/sort/enum/6")
                         .asText());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "aspirations",
+                contract.at("/components/schemas/JobSearchRequest/required/0").asText());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                3,
+                contract.at(
+                        "/components/schemas/JobSearchRequest/properties/selectedProviders/maxItems")
+                        .asInt());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                1,
+                contract.at(
+                        "/components/schemas/Aspirations/properties/desiredRoles/minItems")
+                        .asInt());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                10,
+                contract.at(
+                        "/components/schemas/Aspirations/properties/desiredRoles/maxItems")
+                        .asInt());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                120,
+                contract.at(
+                        "/components/schemas/Aspirations/properties/desiredRoles/items/maxLength")
+                        .asInt());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                10,
+                contract.at(
+                        "/components/schemas/Aspirations/properties/locations/maxItems")
+                        .asInt());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                0,
+                contract.at(
+                        "/components/schemas/SalaryExpectation/properties/min/minimum")
+                        .asInt());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "#/components/schemas/ApiErrorResponse",
+                contract.at(
+                        "/paths/~1api~1jobs~1search/post/responses/400/content/application~1json/schema/$ref")
+                        .asText());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "#/components/schemas/ApiErrorResponse",
+                contract.at(
+                        "/paths/~1api~1jobs~1search/post/responses/413/content/application~1json/schema/$ref")
+                        .asText());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                4,
+                contract.at("/components/schemas/ApiErrorResponse/required").size());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at(
+                        "/components/schemas/ApiErrorResponse/properties/correlationId")
+                        .isObject());
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at(
                         "/components/schemas/ReedJobSearchResponse/properties/totalPages")

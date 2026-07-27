@@ -34,6 +34,37 @@ If the body is omitted, Job Finder obtains the authenticated user's profile and
 maps its structured aspirations, work preferences, and location into the Job
 Service request.
 
+### Request limits and client errors
+
+A supplied request body is capped at 65,536 bytes before JSON binding, including
+streamed or chunked requests without a trusted `Content-Length`. The limit is
+configured by `JOB_FINDER_MAX_SEARCH_REQUEST_BYTES`; startup fails unless it is
+between 1,024 and 262,144 bytes.
+
+The browser-facing API 1.4 applies these limits before calling a downstream:
+
+| Field | Limit |
+| --- | --- |
+| `aspirations.desiredRoles` | required; 1–10 values, each 1–120 characters |
+| `aspirations.locations` | required; 1–10 values, each 1–200 characters |
+| `aspirations.industries` | at most 20 values, each 1–120 characters |
+| salary | non-negative, at most 10,000,000; minimum cannot exceed maximum |
+| `selectedProviders` | at most 3; `REED`, `ADZUNA` or `JSEARCH` |
+| employment types | at most 4; `FULL_TIME`, `PART_TIME`, `CONTRACT` or `TEMPORARY` |
+| remote preference | `REMOTE`, `HYBRID`, `ONSITE` or `ON_SITE` |
+| `page` / `pageSize` | 1–100 / 1–50 |
+| `sort` | one of the seven Job Service API 2.1 sort values |
+| latitude / longitude | −90–90 / −180–180 |
+| company-size / culture lists | at most 10 / 20 values, each 1–100 characters |
+| home display name / postcode | at most 200 / 16 characters |
+
+Validation and malformed JSON return `400`; an oversized body returns `413`.
+These responses use the versioned `ApiErrorResponse` fields
+`schemaVersion`, `code`, safe `message` and `correlationId`. Rejected requests
+do not call User Profile or Job Service. Incoming correlation IDs are preserved
+only when they are at most 128 characters and contain log/header-safe letters,
+digits, `.`, `_` or `-`; otherwise Job Finder generates a UUID.
+
 ## Job Finder to User Profile
 
 Job Finder calls:
@@ -171,7 +202,9 @@ Contract policy checks reject:
 
 - Missing or invalid authentication returns a stable, redacted `401` response
   with a correlation ID.
-- An incomplete profile or invalid search request returns `400`.
+- An incomplete profile, invalid search request or malformed JSON returns the
+  stable API 1.4 error schema with `400`; a body over the configured byte limit
+  uses the same schema with `413`.
 - An invalid saved-job request returns a stable `400`; missing and foreign
   saved-job IDs return the same stable `404`.
 - An unavailable User Profile or Job Service returns `503` without exposing

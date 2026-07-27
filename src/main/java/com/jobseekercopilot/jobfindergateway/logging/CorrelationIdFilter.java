@@ -7,6 +7,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -16,6 +18,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 @Component
+@Order(Ordered.HIGHEST_PRECEDENCE)
 public class CorrelationIdFilter extends OncePerRequestFilter {
 
     public static final String HEADER_NAME = "X-Correlation-Id";
@@ -29,6 +32,8 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
             "(?i)(?<=/api/jobs/saved/)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?=/|$)");
     private static final Pattern USER_PATH_SEGMENT = Pattern.compile(
             "(?<=/applications/user/)[^/]+");
+    private static final Pattern SAFE_CORRELATION_ID = Pattern.compile("[A-Za-z0-9._-]+");
+    private static final int MAX_CORRELATION_ID_LENGTH = 128;
 
     private final String serviceName;
 
@@ -40,10 +45,7 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
-        String correlationId = request.getHeader(HEADER_NAME);
-        if (!StringUtils.hasText(correlationId)) {
-            correlationId = UUID.randomUUID().toString();
-        }
+        String correlationId = safeCorrelationId(request.getHeader(HEADER_NAME));
 
         long startedAt = System.nanoTime();
         MDC.put(MDC_KEY, correlationId);
@@ -73,5 +75,21 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
         String withoutApplicationIds =
                 UUID_PATH_SEGMENT.matcher(withoutSavedJobIds).replaceAll("{applicationId}");
         return USER_PATH_SEGMENT.matcher(withoutApplicationIds).replaceAll("{subject}");
+    }
+
+    public static String safeCorrelationId(String candidate) {
+        if (!StringUtils.hasText(candidate)
+                || candidate.length() > MAX_CORRELATION_ID_LENGTH
+                || !SAFE_CORRELATION_ID.matcher(candidate).matches()) {
+            return UUID.randomUUID().toString();
+        }
+        return candidate;
+    }
+
+    public static String currentCorrelationId() {
+        String correlationId = MDC.get(MDC_KEY);
+        return StringUtils.hasText(correlationId)
+                ? correlationId
+                : UUID.randomUUID().toString();
     }
 }

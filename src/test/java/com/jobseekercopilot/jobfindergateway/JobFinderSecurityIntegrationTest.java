@@ -5,7 +5,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -19,10 +23,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -76,6 +82,9 @@ class JobFinderSecurityIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @LocalServerPort
+    private int serverPort;
 
     @BeforeEach
     void resetDownstreamEvidence() {
@@ -168,6 +177,177 @@ class JobFinderSecurityIntegrationTest {
     }
 
     @Test
+    void invalidSearchBoundariesReturnStableErrorsWithoutCallingDownstreams() {
+        List<String> invalidBodies = List.of(
+                "{}",
+                """
+                {"aspirations":{"desiredRoles":[],"locations":["London"]}}
+                """,
+                """
+                {"aspirations":{"desiredRoles":["Engineer"],"locations":[]}}
+                """,
+                """
+                {"aspirations":{"desiredRoles":["Engineer"],"locations":["London"]},"page":0}
+                """,
+                """
+                {"aspirations":{"desiredRoles":["Engineer"],"locations":["London"]},"pageSize":51}
+                """,
+                """
+                {"aspirations":{"desiredRoles":["Engineer"],"locations":["London"]},"sort":"RANDOM"}
+                """,
+                """
+                {"aspirations":{"desiredRoles":["Engineer"],"locations":["London"]},"selectedProviders":["UNKNOWN"]}
+                """,
+                """
+                {
+                  "aspirations":{"desiredRoles":["Engineer"],"locations":["London"]},
+                  "workPreferences":{"employmentType":["PERMANENT"]}
+                }
+                """,
+                """
+                {
+                  "aspirations":{"desiredRoles":["Engineer"],"locations":["London"]},
+                  "homeLocation":{"latitude":91}
+                }
+                """,
+                """
+                {
+                  "aspirations":{
+                    "desiredRoles":["Engineer"],
+                    "locations":["London"],
+                    "salaryExpectation":{"min":50000,"max":40000,"currency":"GBP"}
+                  }
+                }
+                """,
+                """
+                {
+                  "aspirations":{
+                    "desiredRoles":[
+                      "1","2","3","4","5","6","7","8","9","10","11"
+                    ],
+                    "locations":["London"]
+                  }
+                }
+                """,
+                """
+                {
+                  "aspirations":{"desiredRoles":["%s"],"locations":["London"]}
+                }
+                """.formatted("x".repeat(121)),
+                """
+                {
+                  "aspirations":{
+                    "desiredRoles":["Engineer"],
+                    "locations":["1","2","3","4","5","6","7","8","9","10","11"]
+                  }
+                }
+                """,
+                """
+                {
+                  "aspirations":{"desiredRoles":["Engineer"],"locations":["London"]},
+                  "workPreferences":{"remotePreference":"ANYWHERE"}
+                }
+                """,
+                """
+                {
+                  "aspirations":{
+                    "desiredRoles":["Engineer"],
+                    "locations":["London"],
+                    "salaryExpectation":{"min":0,"max":50000,"currency":"POUNDS"}
+                  }
+                }
+                """);
+
+        for (int index = 0; index < invalidBodies.size(); index++) {
+            DOWNSTREAM.reset();
+            String correlationId = "validation-" + index;
+            HttpHeaders headers = authenticated(JWKS.validToken("invalid-search-" + index));
+            headers.set("X-Correlation-Id", correlationId);
+
+            ResponseEntity<Map> response = search(headers, invalidBodies.get(index));
+
+            assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+            assertEquals("1", response.getBody().get("schemaVersion"));
+            assertEquals("JOB_FINDER_INVALID_REQUEST", response.getBody().get("code"));
+            assertEquals(
+                    "The request does not meet the documented requirements.",
+                    response.getBody().get("message"));
+            assertEquals(correlationId, response.getBody().get("correlationId"));
+            assertEquals(correlationId, response.getHeaders().getFirst("X-Correlation-Id"));
+            assertNull(DOWNSTREAM.profileAuthorization());
+            assertNull(DOWNSTREAM.jobAuthorization());
+            assertNull(DOWNSTREAM.jobBody());
+        }
+    }
+
+    @Test
+    void malformedJsonReturnsStableErrorWithoutCallingDownstreams() {
+        HttpHeaders headers = authenticated(JWKS.validToken("malformed-search"));
+        headers.set("X-Correlation-Id", "malformed-json");
+
+        ResponseEntity<Map> response = search(headers, "{\"aspirations\":");
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertEquals("1", response.getBody().get("schemaVersion"));
+        assertEquals("JOB_FINDER_MALFORMED_JSON", response.getBody().get("code"));
+        assertEquals("malformed-json", response.getBody().get("correlationId"));
+        assertNull(DOWNSTREAM.profileAuthorization());
+        assertNull(DOWNSTREAM.jobAuthorization());
+        assertNull(DOWNSTREAM.jobBody());
+    }
+
+    @Test
+    void fixedLengthOversizedSearchBodyReturnsPayloadTooLarge() {
+        HttpHeaders headers = authenticated(JWKS.validToken("oversized-fixed-search"));
+        headers.set("X-Correlation-Id", "oversized-fixed");
+        String body = "{\"padding\":\"" + "x".repeat(65_536) + "\"}";
+
+        ResponseEntity<Map> response = search(headers, body);
+
+        assertPayloadTooLarge(response.getStatusCode(), response.getBody(), "oversized-fixed");
+        assertNull(DOWNSTREAM.profileAuthorization());
+        assertNull(DOWNSTREAM.jobAuthorization());
+        assertNull(DOWNSTREAM.jobBody());
+    }
+
+    @Test
+    void streamedOversizedSearchBodyReturnsPayloadTooLarge() throws Exception {
+        HttpURLConnection connection = (HttpURLConnection) URI.create(
+                "http://127.0.0.1:" + serverPort + "/api/jobs/search")
+                .toURL()
+                .openConnection();
+        connection.setRequestMethod("POST");
+        connection.setDoOutput(true);
+        connection.setChunkedStreamingMode(1_024);
+        connection.setConnectTimeout(5_000);
+        connection.setReadTimeout(5_000);
+        connection.setRequestProperty("Content-Type", MediaType.APPLICATION_JSON_VALUE);
+        connection.setRequestProperty(
+                "Authorization",
+                "Bearer " + JWKS.validToken("oversized-stream-search"));
+        connection.setRequestProperty("X-Correlation-Id", "oversized-stream");
+        byte[] body = ("{\"padding\":\"" + "x".repeat(65_536) + "\"}")
+                .getBytes(StandardCharsets.UTF_8);
+
+        try (OutputStream output = connection.getOutputStream()) {
+            output.write(body);
+        }
+
+        assertEquals(HttpStatus.PAYLOAD_TOO_LARGE.value(), connection.getResponseCode());
+        try (InputStream responseBody = connection.getErrorStream()) {
+            JsonNode error = objectMapper.readTree(responseBody);
+            assertEquals("1", error.at("/schemaVersion").asText());
+            assertEquals("JOB_SEARCH_PAYLOAD_TOO_LARGE", error.at("/code").asText());
+            assertEquals("oversized-stream", error.at("/correlationId").asText());
+        } finally {
+            connection.disconnect();
+        }
+        assertNull(DOWNSTREAM.profileAuthorization());
+        assertNull(DOWNSTREAM.jobAuthorization());
+        assertNull(DOWNSTREAM.jobBody());
+    }
+
+    @Test
     void profileLookupReceivesTheValidatedBearerToken() {
         String token = JWKS.validToken("profile-owner");
 
@@ -178,6 +358,11 @@ class JobFinderSecurityIntegrationTest {
                 Map.class);
 
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertEquals("1", response.getBody().get("schemaVersion"));
+        assertEquals("JOB_FINDER_INVALID_PROFILE", response.getBody().get("code"));
+        assertEquals(
+                response.getHeaders().getFirst("X-Correlation-Id"),
+                response.getBody().get("correlationId"));
         assertEquals("Bearer " + token, DOWNSTREAM.profileAuthorization());
         assertNull(DOWNSTREAM.jobAuthorization());
         assertNull(DOWNSTREAM.jobUserId());
@@ -437,6 +622,17 @@ class JobFinderSecurityIntegrationTest {
                 HttpMethod.POST,
                 new HttpEntity<>(body, headers),
                 Map.class);
+    }
+
+    private static void assertPayloadTooLarge(
+            HttpStatusCode status,
+            Map body,
+            String correlationId) {
+        assertEquals(HttpStatus.PAYLOAD_TOO_LARGE, status);
+        assertEquals("1", body.get("schemaVersion"));
+        assertEquals("JOB_SEARCH_PAYLOAD_TOO_LARGE", body.get("code"));
+        assertEquals(correlationId, body.get("correlationId"));
+        assertFalse(body.toString().contains("Exception"));
     }
 
     private void assertAuthenticationFailure(HttpHeaders headers, String token) {

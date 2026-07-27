@@ -30,7 +30,8 @@ committed.
 Authentication uses RS256 access tokens verified from the platform JWKS.
 Runtime configuration includes `AUTH_JWKS_URI`, `JOB_FINDER_JWT_ISSUER`,
 `JOB_FINDER_JWT_AUDIENCE`, `JOB_SERVICE_URL`, `USER_PROFILE_SERVICE_URL`,
-and `APPLICATION_TRACKER_SERVICE_URL`. No signing
+`APPLICATION_TRACKER_SERVICE_URL`, and
+`JOB_FINDER_MAX_SEARCH_REQUEST_BYTES` (default 65,536). No signing
 credential is accepted or stored by this service.
 
 Application list, status, and generated-withdraw routes derive ownership from
@@ -42,9 +43,11 @@ Job Finder also creates a request-scoped generated Job Service client and
 forwards the original Bearer token; it never relays a caller-supplied identity
 header. Job Service independently verifies the token and derives search
 identity from its subject.
-The browser-facing API 1.3 passes Job Service API 2.1 `page`, `pageSize` and
-`sort` through unchanged and returns its bounded aggregate `totalPages` and
-effective sort metadata.
+The browser-facing API 1.4 validates bounded search criteria and caps request
+bodies before any downstream call. It passes valid Job Service API 2.1 `page`,
+`pageSize` and `sort` through unchanged and returns its bounded aggregate
+`totalPages` and effective sort metadata. Invalid, malformed and oversized
+requests use a stable versioned error with safe correlation metadata.
 
 The same boundary provides `POST/GET /api/jobs/saved` and
 `GET/DELETE /api/jobs/saved/{savedJobId}`. Job Service remains the authority

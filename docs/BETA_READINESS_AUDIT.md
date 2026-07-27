@@ -15,8 +15,6 @@ Service, and maps its response. It does not call providers directly.
   [APP-03](https://github.com/jobseekercopilot/application-tracker-service/issues/4).
 - **P1 resilience:** the downstream `RestTemplate` has no connect or response
   timeout and there is no request deadline or cancellation policy.
-- **P1 API safety:** request fields lack bounds, length constraints, provider
-  allowlisting, and stable error semantics.
 - **P1 secret safety:** the inspected source and legacy history contained
   non-empty JWT-secret defaults. Current source no longer accepts a shared
   signing secret, but credential rotation/history decisions remain required.
@@ -47,6 +45,14 @@ Service, and maps its response. It does not call providers directly.
   client-side semantics, and preserves the server-owned
   `savedJobId`, immutable snapshot identity/version/digest and save outcome
   while redacting saved-job IDs from request logs.
+- Browser Job Search requests are capped at 65,536 bytes even when streamed
+  without a trusted content length. Nested fields, lists, strings, coordinates,
+  salary, providers, employment types, paging and sort values are validated
+  before downstream work.
+- Invalid or malformed requests and incomplete profiles return the stable
+  versioned API 1.4 error schema; oversized bodies return the same schema with
+  `413`. Correlation IDs are bounded and restricted to log/header-safe
+  characters, and validation tests prove rejected requests call no downstream.
 - Saved-job integration tests cover authentication, caller identity-header
   stripping, per-request Bearer forwarding, create/replay outcomes, list/get,
   idempotent delete, non-enumerating not-found behavior and redacted dependency

@@ -1,13 +1,42 @@
 package com.jobseekercopilot.jobfindergateway.model.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 
 public class JobSearchRequest {
+
+    @NotNull(message = "aspirations is required")
+    @Valid
     private Aspirations aspirations;
+
+    @Valid
     private WorkPreferences workPreferences;
+
+    @Valid
     private HomeLocation homeLocation;
-    private List<String> selectedProviders;
+
+    @Size(max = 3, message = "selectedProviders cannot contain more than 3 values")
+    private List<
+            @NotBlank(message = "selectedProviders cannot contain blank values")
+            @Pattern(
+                    regexp = "(?i)\\s*(REED|ADZUNA|JSEARCH)\\s*",
+                    message = "selectedProviders contains an unsupported provider")
+            String> selectedProviders;
+
+    @Min(value = 1, message = "page must be at least 1")
+    @Max(value = 100, message = "page cannot exceed 100")
     @Schema(
             description = "One-based aggregate result page. Omitted values use the Job Service default.",
             minimum = "1",
@@ -15,6 +44,9 @@ public class JobSearchRequest {
             defaultValue = "1"
     )
     private Integer page;
+
+    @Min(value = 1, message = "pageSize must be at least 1")
+    @Max(value = 50, message = "pageSize cannot exceed 50")
     @Schema(
             description = "Maximum aggregate results returned on one page. Omitted values use the Job Service default.",
             minimum = "1",
@@ -22,6 +54,11 @@ public class JobSearchRequest {
             defaultValue = "10"
     )
     private Integer pageSize;
+
+    @Pattern(
+            regexp = "(?i)\\s*(MOST_RELEVANT|CLOSEST|HIGHEST_SALARY|NEWEST_POSTED"
+                    + "|OLDEST_POSTED|COMPANY_AZ|JOB_TITLE_AZ)\\s*",
+            message = "sort contains an unsupported value")
     @Schema(
             description = "Stable Job Service aggregate result order.",
             allowableValues = {
@@ -97,10 +134,44 @@ public class JobSearchRequest {
     }
 
     public static class Aspirations {
-        private List<String> desiredRoles;
-        private List<String> industries;
+
+        @NotEmpty(message = "aspirations.desiredRoles is required")
+        @Size(
+                min = 1,
+                max = 10,
+                message = "aspirations.desiredRoles must contain between 1 and 10 values")
+        private List<
+                @NotBlank(message = "aspirations.desiredRoles cannot contain blank values")
+                @Size(
+                        min = 1,
+                        max = 120,
+                        message = "aspirations.desiredRoles values must contain 1 to 120 characters")
+                String> desiredRoles;
+
+        @Size(max = 20, message = "aspirations.industries cannot contain more than 20 values")
+        private List<
+                @NotBlank(message = "aspirations.industries cannot contain blank values")
+                @Size(
+                        min = 1,
+                        max = 120,
+                        message = "aspirations.industries values must contain 1 to 120 characters")
+                String> industries;
+
+        @Valid
         private SalaryExpectation salaryExpectation;
-        private List<String> locations;
+
+        @NotEmpty(message = "aspirations.locations is required")
+        @Size(
+                min = 1,
+                max = 10,
+                message = "aspirations.locations must contain between 1 and 10 values")
+        private List<
+                @NotBlank(message = "aspirations.locations cannot contain blank values")
+                @Size(
+                        min = 1,
+                        max = 200,
+                        message = "aspirations.locations values must contain 1 to 200 characters")
+                String> locations;
 
         public Aspirations() {
         }
@@ -139,8 +210,18 @@ public class JobSearchRequest {
     }
 
     public static class SalaryExpectation {
+
+        @Min(value = 0, message = "salaryExpectation.min cannot be negative")
+        @Max(value = 10_000_000, message = "salaryExpectation.min is unreasonably large")
         private Integer min;
+
+        @Min(value = 0, message = "salaryExpectation.max cannot be negative")
+        @Max(value = 10_000_000, message = "salaryExpectation.max is unreasonably large")
         private Integer max;
+
+        @Pattern(
+                regexp = "(?i)[A-Z]{3}",
+                message = "salaryExpectation.currency must be a three-letter currency code")
         private String currency;
 
         public SalaryExpectation() {
@@ -169,14 +250,53 @@ public class JobSearchRequest {
         public void setCurrency(String currency) {
             this.currency = currency;
         }
+
+        @AssertTrue(message = "salaryExpectation.min cannot exceed salaryExpectation.max")
+        @JsonIgnore
+        public boolean isRangeValid() {
+            return min == null || max == null || min <= max;
+        }
     }
 
     public static class WorkPreferences {
-        private List<String> employmentType;
+
+        @Size(max = 4, message = "workPreferences.employmentType cannot contain more than 4 values")
+        private List<
+                @NotBlank(message = "workPreferences.employmentType cannot contain blank values")
+                @Pattern(
+                        regexp = "(?i)\\s*(FULL_TIME|PART_TIME|CONTRACT|TEMPORARY)\\s*",
+                        message = "workPreferences.employmentType contains an unsupported value")
+                String> employmentType;
+
+        @Pattern(
+                regexp = "(?i)\\s*(REMOTE|HYBRID|ONSITE|ON_SITE)\\s*",
+                message = "workPreferences.remotePreference contains an unsupported value")
         private String remotePreference;
-        private List<String> companySize;
-        private List<String> culture;
+
+        @Size(max = 10, message = "workPreferences.companySize cannot contain more than 10 values")
+        private List<
+                @NotBlank(message = "workPreferences.companySize cannot contain blank values")
+                @Size(
+                        min = 1,
+                        max = 100,
+                        message = "workPreferences.companySize values must contain 1 to 100 characters")
+                String> companySize;
+
+        @Size(max = 20, message = "workPreferences.culture cannot contain more than 20 values")
+        private List<
+                @NotBlank(message = "workPreferences.culture cannot contain blank values")
+                @Size(
+                        min = 1,
+                        max = 100,
+                        message = "workPreferences.culture values must contain 1 to 100 characters")
+                String> culture;
+
+        @DecimalMin(value = "-90.0", message = "workPreferences.homeLatitude must be at least -90")
+        @DecimalMax(value = "90.0", message = "workPreferences.homeLatitude cannot exceed 90")
         private Double homeLatitude;
+
+        @DecimalMin(value = "-180.0", message = "workPreferences.homeLongitude must be at least -180")
+        @DecimalMax(value = "180.0", message = "workPreferences.homeLongitude cannot exceed 180")
         private Double homeLongitude;
 
         public WorkPreferences() {
@@ -232,9 +352,19 @@ public class JobSearchRequest {
     }
 
     public static class HomeLocation {
+
+        @Size(max = 200, message = "homeLocation.displayName cannot exceed 200 characters")
         private String displayName;
+
+        @Size(max = 16, message = "homeLocation.postcode cannot exceed 16 characters")
         private String postcode;
+
+        @DecimalMin(value = "-90.0", message = "homeLocation.latitude must be at least -90")
+        @DecimalMax(value = "90.0", message = "homeLocation.latitude cannot exceed 90")
         private Double latitude;
+
+        @DecimalMin(value = "-180.0", message = "homeLocation.longitude must be at least -180")
+        @DecimalMax(value = "180.0", message = "homeLocation.longitude cannot exceed 180")
         private Double longitude;
 
         public String getDisplayName() {

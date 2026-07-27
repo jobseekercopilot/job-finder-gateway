@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jobseekercopilot.generated.jobservice.model.ReedJobSearchResponse;
 import com.jobseekercopilot.jobfindergateway.client.JobServiceClientFactory;
 import com.jobseekercopilot.jobfindergateway.client.UserProfileClientFactory;
+import com.jobseekercopilot.jobfindergateway.logging.CorrelationIdFilter;
+import com.jobseekercopilot.jobfindergateway.model.dto.ApiErrorResponse;
 import com.jobseekercopilot.jobfindergateway.model.dto.ApplicationRecordResponse;
 import com.jobseekercopilot.jobfindergateway.model.dto.JobSearchRequest;
 import com.jobseekercopilot.jobfindergateway.model.dto.UpdateApplicationStatusRequest;
@@ -16,6 +18,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -81,9 +84,14 @@ public class JobSearchController {
             @ApiResponse(responseCode = "200", description = "Search completed successfully",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ReedJobSearchResponse.class))),
             @ApiResponse(responseCode = "400", description = "Invalid request or incomplete user profile",
-                    content = @Content(mediaType = "application/json")),
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiErrorResponse.class))),
             @ApiResponse(responseCode = "401", description = "Missing or invalid access token",
-                    content = @Content(mediaType = "application/json")),
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiErrorResponse.class))),
+            @ApiResponse(responseCode = "413", description = "Job search request body is too large",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiErrorResponse.class))),
             @ApiResponse(responseCode = "503", description = "Downstream service unavailable",
                     content = @Content(mediaType = "application/json"))
     })
@@ -91,7 +99,7 @@ public class JobSearchController {
     public ResponseEntity<?> searchJobs(
             @AuthenticationPrincipal Jwt accessToken,
             @Parameter(description = "Job search request parameters (optional - if omitted, uses user profile preferences)", required = false)
-            @RequestBody(required = false) JobSearchRequest searchRequest) {
+            @Valid @RequestBody(required = false) JobSearchRequest searchRequest) {
         long startedAt = System.nanoTime();
         String userId = accessToken.getSubject();
         log.info("job-finder-gateway received job search userId={} requestSource={}",
@@ -125,7 +133,11 @@ public class JobSearchController {
                         userId,
                         (System.nanoTime() - startedAt) / 1_000_000);
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body("{\"error\":\"PROFILE_NOT_FOUND\",\"message\":\"User profile does not exist\"}");
+                        .body(new ApiErrorResponse(
+                                "1",
+                                "JOB_FINDER_PROFILE_NOT_FOUND",
+                                "The user profile does not exist.",
+                                CorrelationIdFilter.currentCorrelationId()));
             }
 
             if (desiredRoles(userProfile).isEmpty() || locations(userProfile).isEmpty()) {
@@ -135,7 +147,11 @@ public class JobSearchController {
                         locations(userProfile).size(),
                         (System.nanoTime() - startedAt) / 1_000_000);
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body("{\"error\":\"INVALID_REQUEST\",\"message\":\"User profile is incomplete. Please update your aspirations and work preferences.\"}");
+                        .body(new ApiErrorResponse(
+                                "1",
+                                "JOB_FINDER_INVALID_PROFILE",
+                                "The user profile needs target roles and locations before searching.",
+                                CorrelationIdFilter.currentCorrelationId()));
             }
 
             try {

@@ -5,12 +5,10 @@ import com.jobseekercopilot.jobfindergateway.logging.CorrelationIdFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.util.UUID;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 
 @Component
 public class JobFinderAuthenticationEntryPoint implements AuthenticationEntryPoint {
@@ -28,13 +26,7 @@ public class JobFinderAuthenticationEntryPoint implements AuthenticationEntryPoi
             AuthenticationException authenticationException) throws IOException {
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        String correlationId = request.getHeader(CorrelationIdFilter.HEADER_NAME);
-        if (!StringUtils.hasText(correlationId)) {
-            correlationId = response.getHeader(CorrelationIdFilter.HEADER_NAME);
-        }
-        if (!StringUtils.hasText(correlationId)) {
-            correlationId = UUID.randomUUID().toString();
-        }
+        String correlationId = CorrelationIdFilter.currentCorrelationId();
         response.setHeader(CorrelationIdFilter.HEADER_NAME, correlationId);
         objectMapper.writeValue(response.getOutputStream(), new AuthenticationError(
                 "1",

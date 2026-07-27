@@ -116,6 +116,14 @@ class OpenApiExportTest {
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at("/paths/~1api~1jobs~1saved~1{savedJobId}/delete").isObject());
         org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at("/paths/~1api~1jobs~1applications/post").isObject());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at("/paths/~1api~1jobs~1applications/get").isObject());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at(
+                        "/components/schemas/CreateTrackedApplicationRequest/properties/userId")
+                        .isMissingNode());
+        org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at("/components/schemas/SavedJobResponse/properties/savedJobId")
                         .isObject());
         org.junit.jupiter.api.Assertions.assertEquals(

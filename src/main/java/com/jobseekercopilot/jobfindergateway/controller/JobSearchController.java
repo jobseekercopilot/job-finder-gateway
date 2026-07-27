@@ -8,6 +8,7 @@ import com.jobseekercopilot.jobfindergateway.http.DownstreamFailureResponses;
 import com.jobseekercopilot.jobfindergateway.logging.CorrelationIdFilter;
 import com.jobseekercopilot.jobfindergateway.model.dto.ApiErrorResponse;
 import com.jobseekercopilot.jobfindergateway.model.dto.ApplicationRecordResponse;
+import com.jobseekercopilot.jobfindergateway.model.dto.CreateTrackedApplicationRequest;
 import com.jobseekercopilot.jobfindergateway.model.dto.JobSearchRequest;
 import com.jobseekercopilot.jobfindergateway.model.dto.UpdateApplicationStatusRequest;
 import com.jobseekercopilot.jobfindergateway.model.dto.WithdrawGeneratedApplicationResponse;
@@ -43,6 +44,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -214,6 +216,97 @@ public class JobSearchController {
         return ResponseEntity.ok(response);
     }
 
+    @PostMapping("/applications")
+    @Operation(
+            summary = "Track an application for the authenticated claimant",
+            description = "Creates a manual application while deriving ownership exclusively from the validated access token.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "201", description = "Application created",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApplicationRecordResponse.class))),
+            @ApiResponse(responseCode = "200", description = "Existing idempotent application returned",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApplicationRecordResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid application request",
+                    content = @Content(mediaType = "application/json")),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid access token",
+                    content = @Content(mediaType = "application/json")),
+            @ApiResponse(responseCode = "503", description = "Application tracker unavailable",
+                    content = @Content(mediaType = "application/json"))
+    })
+    @Tag(name = "Job Applications")
+    public ResponseEntity<?> createApplication(
+            @AuthenticationPrincipal Jwt accessToken,
+            @Valid @RequestBody CreateTrackedApplicationRequest request) {
+        long startedAt = System.nanoTime();
+        String subject = accessToken.getSubject();
+        var trackerRequest = new LinkedHashMap<String, Object>();
+        trackerRequest.put("userId", subject);
+        trackerRequest.put("jobId", request.jobId());
+        trackerRequest.put("canonicalJobId", request.canonicalJobId());
+        trackerRequest.put("provider", request.provider());
+        trackerRequest.put("externalJobId", request.externalJobId());
+        trackerRequest.put("jobTitle", request.jobTitle());
+        trackerRequest.put("companyName", request.companyName());
+        if (request.location() != null && !request.location().isBlank()) {
+            trackerRequest.put("location", request.location());
+        }
+        trackerRequest.put("provenance", "MANUAL");
+        trackerRequest.put("initialStatus", "APPLIED");
+
+        try {
+            ResponseEntity<Object> response = restTemplate.exchange(
+                    applicationTrackerBaseUrl + "/api/v1/applications",
+                    org.springframework.http.HttpMethod.POST,
+                    new HttpEntity<>(trackerRequest, authenticatedHeaders(accessToken)),
+                    Object.class);
+            ApplicationRecordResponse created =
+                    objectMapper.convertValue(response.getBody(), ApplicationRecordResponse.class);
+            if (!isOwnedBy(created, subject)) {
+                log.error("application-tracker-service create failed ownership validation durationMs={}",
+                        (System.nanoTime() - startedAt) / 1_000_000);
+                return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                        .body(apiError(
+                                "JOB_FINDER_INVALID_APPLICATION_RESPONSE",
+                                "The application service returned an invalid response."));
+            }
+            log.info("application-tracker-service create returned responseStatus={} durationMs={}",
+                    response.getStatusCode().value(),
+                    (System.nanoTime() - startedAt) / 1_000_000);
+            return ResponseEntity.status(response.getStatusCode()).body(created);
+        } catch (HttpStatusCodeException e) {
+            log.warn("application-tracker-service create rejected responseStatus={} durationMs={}",
+                    e.getStatusCode().value(),
+                    (System.nanoTime() - startedAt) / 1_000_000);
+            return sanitizedApplicationFailure(e);
+        } catch (RestClientException e) {
+            log.warn("application-tracker-service create failed durationMs={} error={}",
+                    (System.nanoTime() - startedAt) / 1_000_000,
+                    e.getClass().getSimpleName(),
+                    e);
+            return applicationTrackerFailure(e);
+        }
+    }
+
+    @GetMapping("/applications")
+    @Operation(
+            summary = "Get applications for the authenticated claimant",
+            description = "Derives the application owner exclusively from the validated access token.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Applications returned",
+                    content = @Content(mediaType = "application/json",
+                            array = @ArraySchema(schema = @Schema(implementation = ApplicationRecordResponse.class)))),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid access token",
+                    content = @Content(mediaType = "application/json")),
+            @ApiResponse(responseCode = "503", description = "Application tracker unavailable",
+                    content = @Content(mediaType = "application/json"))
+    })
+    @Tag(name = "Job Applications")
+    public ResponseEntity<?> getApplications(
+            @AuthenticationPrincipal Jwt accessToken) {
+        return getApplicationsForSubject(accessToken);
+    }
+
     @GetMapping("/applications/user/{userId}")
     @Operation(
             summary = "Get persisted applications for the authenticated user",
@@ -242,7 +335,12 @@ public class JobSearchController {
                     (System.nanoTime() - startedAt) / 1_000_000);
             return applicationNotFound();
         }
+        return getApplicationsForSubject(accessToken);
+    }
 
+    private ResponseEntity<?> getApplicationsForSubject(Jwt accessToken) {
+        long startedAt = System.nanoTime();
+        String subject = accessToken.getSubject();
         try {
             log.info("Calling application-tracker-service application list");
             ResponseEntity<List<ApplicationRecordResponse>> response = restTemplate.exchange(

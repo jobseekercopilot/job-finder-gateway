@@ -600,6 +600,53 @@ class JobFinderSecurityIntegrationTest {
     }
 
     @Test
+    void sessionDerivedApplicationCreateAndListNeverAcceptBrowserOwnership() throws Exception {
+        String token = JWKS.validToken("alice");
+        HttpHeaders headers = authenticated(token);
+        headers.set("X-User-Id", "victim");
+
+        ResponseEntity<Map> created = restTemplate.exchange(
+                "/api/jobs/applications",
+                HttpMethod.POST,
+                new HttpEntity<>("""
+                        {
+                          "userId": "victim",
+                          "jobId": "canonical-1",
+                          "canonicalJobId": "canonical-1",
+                          "provider": "REED",
+                          "externalJobId": "reed-1",
+                          "jobTitle": "Platform Engineer",
+                          "companyName": "Example Ltd",
+                          "location": "London"
+                        }
+                        """, headers),
+                Map.class);
+        ResponseEntity<List> listed = restTemplate.exchange(
+                "/api/jobs/applications",
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                List.class);
+
+        assertEquals(HttpStatus.CREATED, created.getStatusCode());
+        assertEquals("alice", created.getBody().get("userId"));
+        assertEquals(HttpStatus.OK, listed.getStatusCode());
+        assertEquals("alice", ((Map<?, ?>) listed.getBody().get(0)).get("userId"));
+
+        DownstreamCall createCall = DOWNSTREAM.applicationCalls().stream()
+                .filter(call -> call.method().equals("POST")
+                        && call.path().equals("/api/v1/applications"))
+                .findFirst()
+                .orElseThrow();
+        JsonNode forwarded = objectMapper.readTree(createCall.body());
+        assertEquals("alice", forwarded.get("userId").asText());
+        assertEquals("MANUAL", forwarded.get("provenance").asText());
+        assertEquals("APPLIED", forwarded.get("initialStatus").asText());
+        assertNull(createCall.userId());
+        assertTrue(DOWNSTREAM.applicationCalls().stream().allMatch(call ->
+                call.authorization().equals("Bearer " + token)));
+    }
+
+    @Test
     void statusUpdateDeniesForeignAndUnknownIdsWithoutEnumeration() {
         String token = JWKS.validToken("alice");
         HttpEntity<String> request = new HttpEntity<>(
@@ -856,6 +903,16 @@ class JobFinderSecurityIntegrationTest {
             DownstreamCall call = capture(exchange);
             applicationCalls.add(call);
             String path = call.path();
+
+            if (call.method().equals("POST")
+                    && path.equals("/api/v1/applications")) {
+                JsonNode request = new ObjectMapper().readTree(call.body());
+                respond(exchange, 201, application(
+                        OWNED_APPLICATION,
+                        request.get("userId").asText(),
+                        request.get("initialStatus").asText()));
+                return;
+            }
 
             if (call.method().equals("GET") && path.contains("/user/")) {
                 respond(exchange, 200, "[" + application(

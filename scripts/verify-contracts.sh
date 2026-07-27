@@ -22,9 +22,9 @@ done
 
 test "$(wc -l < "$job_source" | tr -d ' ')" = 4
 grep -Fx 'repository=jobseekercopilot/job-service' "$job_source" >/dev/null
-grep -Fx 'revision=6835b63e539bfce7462d4df737b794935e8581e9' "$job_source" >/dev/null
+grep -Fx 'revision=badf3f061732a0bc662722227ee19f877dd463da' "$job_source" >/dev/null
 grep -Fx 'path=api/openapi.yaml' "$job_source" >/dev/null
-grep -Fx 'sha256=5863da37063f8f688a7c9b232168996e7890811500b382737ca0d238cb9c9f45' "$job_source" >/dev/null
+grep -Fx 'sha256=6465ccfab96a5df67e3bb16a06c3edc4d2a76735b2d789a2237b264636127506' "$job_source" >/dev/null
 
 test "$(wc -l < "$profile_source" | tr -d ' ')" = 4
 grep -Fx 'repository=jobseekercopilot/user-profile-service' "$profile_source" >/dev/null
@@ -33,10 +33,16 @@ grep -Fx 'path=api/openapi.json' "$profile_source" >/dev/null
 grep -Fx 'sha256=ffaaa16a169ab11d864f82440be9fcc7d5df2d4f2d63a3525d40bda497ea6598' "$profile_source" >/dev/null
 
 grep -Fx '  /api/jobs/search:' "$job_contract" >/dev/null
+grep -Fx '  /api/jobs/saved:' "$job_contract" >/dev/null
+grep -Fx '  /api/jobs/saved/{savedJobId}:' "$job_contract" >/dev/null
 grep -Fx '      operationId: searchJobs' "$job_contract" >/dev/null
+for required_operation in save list get unsave; do
+    grep -Fx "      operationId: $required_operation" "$job_contract" >/dev/null
+done
 grep -Fx '      - bearerAuth: []' "$job_contract" >/dev/null
+test "$(grep -c '^      - bearerAuth: \[\]$' "$job_contract")" = 5
 grep -Fx '      scheme: bearer' "$job_contract" >/dev/null
-grep -Fx '  version: 1.2.0' "$job_contract" >/dev/null
+grep -Fx '  version: 2.0.0' "$job_contract" >/dev/null
 if grep -F 'name: X-User-Id' "$job_contract" >/dev/null; then
     echo "contract policy: Job Service contract reintroduced raw identity header" >&2
     exit 1
@@ -55,9 +61,22 @@ for required_field in \
     workplaceType \
     skills \
     experience \
-    fieldProvenance; do
+    fieldProvenance \
+    savedJobId \
+    snapshotVersion \
+    contentVersion \
+    contentSha256 \
+    capturedAt \
+    sourceState \
+    savedAt \
+    updatedAt \
+    job; do
     grep -Fx "        $required_field:" "$job_contract" >/dev/null
 done
+
+grep -Fx '    SavedJobResponse:' "$job_contract" >/dev/null
+grep -Fx '    SavedJobPageResponse:' "$job_contract" >/dev/null
+grep -Fx '          - EXPIRED_SNAPSHOT' "$job_contract" >/dev/null
 
 jq -e '
     (.openapi | type == "string" and startswith("3.")) and

@@ -70,6 +70,35 @@ contract. The generated response is returned directly, preserving:
 - normalised location and salary fields
 - application and generated-document enrichment
 
+### Saved jobs
+
+The same verified access token is required for:
+
+```http
+POST /api/jobs/saved
+GET /api/jobs/saved?page=0&size=20
+GET /api/jobs/saved/{savedJobId}
+DELETE /api/jobs/saved/{savedJobId}
+Authorization: Bearer <the validated access token>
+```
+
+Job Finder creates a new generated Job Service client before assigning each
+request's Bearer token. It never accepts or forwards an owner header. Job
+Service independently verifies the token and owns save validation, stable IDs,
+immutable snapshot versions/content digests, list/get isolation and idempotent
+unsave behavior.
+
+Save preserves `201 CREATED` or `200 REPLAYED|UPDATED|REACTIVATED` and the
+`X-Saved-Job-Outcome` header. Missing and other-owner identifiers map to the
+same stable `404`. Malformed canonical input maps to a stable `400`; unavailable
+or invalid downstream responses do not expose Job Service details. Request
+logs replace saved-job UUIDs with `{savedJobId}`.
+
+The returned `savedJobId`, snapshot version, content digest, timestamps and
+source state are server-owned. Document Generation and Application Tracking
+must retrieve the snapshot by that ID; they must not treat later browser job
+content as authoritative.
+
 ## Job Finder to Application Tracker
 
 All application proxy routes require the same validated access token as Job
@@ -109,26 +138,30 @@ Exact producer contracts and their source revisions are recorded under
 Generator 7.5.0 during `generate-sources`; generated code and JARs are never
 committed.
 
-The Job Service pin currently consumes contract `1.2.0` at producer revision
-`6835b63e539bfce7462d4df737b794935e8581e9`. It includes aggregate
+The Job Service pin currently consumes contract `2.0.0` at producer revision
+`badf3f061732a0bc662722227ee19f877dd463da`. It includes aggregate
 `searchStatus`/`matchingStatus`, the stable provider-result taxonomy, healthy
-empty-result semantics and canonical Job schema `2.0`. Compatibility checks
-protect those response boundaries as well as the existing request and identity
-boundaries.
+empty-result semantics, canonical Job schema `2.0` and the owner-scoped
+saved-job resource. Compatibility checks protect search and saved-job response,
+request and identity boundaries.
 
 Contract policy checks reject:
 
 - missing, symbolic, or checksum-drifted inputs
 - unexpected producer revision metadata
-- removal of the required search or profile operations
+- removal of required search, saved-job or profile operations
 - removal of either downstream Bearer authentication boundary
 - removal of key Job Search request or response boundary fields
+- removal of saved-job identity, version, digest, source-state or canonical
+  snapshot fields
 
 ## Errors and ownership constraints
 
 - Missing or invalid authentication returns a stable, redacted `401` response
   with a correlation ID.
 - An incomplete profile or invalid search request returns `400`.
+- An invalid saved-job request returns a stable `400`; missing and foreign
+  saved-job IDs return the same stable `404`.
 - An unavailable User Profile or Job Service returns `503` without exposing
   credentials.
 - Job Finder enforces its application-proxy ownership checks, but JFG-01 remains

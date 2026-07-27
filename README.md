@@ -2,8 +2,10 @@
 
 Job Finder Gateway is the authenticated browser-facing boundary for Job Search.
 It accepts search requests from the client BFF and delegates canonical search
-work to Job Service. It also contains application-tracker proxy endpoints;
-those dependencies are integration boundaries, not owned implementations.
+work to Job Service. It exposes Job Service's owner-scoped saved-job operations
+so the browser can exchange a selected canonical result for a stable
+`savedJobId`. It also contains application-tracker proxy endpoints; those
+dependencies are integration boundaries, not owned implementations.
 
 Status: **beta hardening in progress; not yet beta-ready**. Reproducible
 generated clients, the Job Search authentication boundary, and Job Finder's
@@ -40,6 +42,14 @@ Job Finder also creates a request-scoped generated Job Service client and
 forwards the original Bearer token; it never relays a caller-supplied identity
 header. Job Service independently verifies the token and derives search
 identity from its subject.
+
+The same boundary provides `POST/GET /api/jobs/saved` and
+`GET/DELETE /api/jobs/saved/{savedJobId}`. Job Service remains the authority
+for owner identity, stable IDs, immutable snapshots, replay/version outcomes
+and non-enumerating lookups. After save, document and application workflows
+must use the returned server-owned `savedJobId`; browser job fields are not
+authoritative input to those workflows.
+
 Application Tracker must enforce the same subject/resource relationship
 atomically; that dependency is tracked by
 [`APP-03`](https://github.com/jobseekercopilot/application-tracker-service/issues/4).

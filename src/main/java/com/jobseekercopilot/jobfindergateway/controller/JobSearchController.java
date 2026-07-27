@@ -62,20 +62,17 @@ public class JobSearchController {
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate;
     private final String applicationTrackerBaseUrl;
-    private final String documentStoreBaseUrl;
 
     public JobSearchController(UserProfileClientFactory userProfileClientFactory,
                                JobServiceClientFactory jobServiceClientFactory,
                                ObjectMapper objectMapper,
                                RestTemplate restTemplate,
-                               @Value("${services.application-tracker.url}") String applicationTrackerBaseUrl,
-                               @Value("${services.document-store.url:http://document-store-service:8089}") String documentStoreBaseUrl) {
+                               @Value("${services.application-tracker.url}") String applicationTrackerBaseUrl) {
         this.userProfileClientFactory = userProfileClientFactory;
         this.jobServiceClientFactory = jobServiceClientFactory;
         this.objectMapper = objectMapper;
         this.restTemplate = restTemplate;
         this.applicationTrackerBaseUrl = applicationTrackerBaseUrl;
-        this.documentStoreBaseUrl = documentStoreBaseUrl;
     }
 
     @PostMapping("/search")
@@ -334,9 +331,13 @@ public class JobSearchController {
     }
 
     @PostMapping("/applications/{applicationId}/withdraw-generated")
-    @Operation(summary = "Withdraw generated application", description = "Resets a generated-only application to NEW and removes generated document references.")
+    @Operation(
+            summary = "Withdraw generated application",
+            description = "Delegates the durable cleanup workflow to Application Tracker and preserves its completed or recovery-pending outcome.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Generated application withdrawn",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = WithdrawGeneratedApplicationResponse.class))),
+            @ApiResponse(responseCode = "202", description = "Withdrawal accepted and awaiting recoverable document cleanup",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = WithdrawGeneratedApplicationResponse.class))),
             @ApiResponse(responseCode = "400", description = "Application has already progressed and cannot be reset", content = @Content(mediaType = "application/json")),
             @ApiResponse(responseCode = "401", description = "Missing or invalid access token", content = @Content(mediaType = "application/json")),
@@ -351,8 +352,6 @@ public class JobSearchController {
         long startedAt = System.nanoTime();
         log.info("job-finder-gateway generated application withdraw received");
         try {
-            ApplicationRecordResponse existingRecord =
-                    requireOwnedApplication(accessToken, applicationId);
             log.info("Calling application-tracker-service withdraw generated");
             ResponseEntity<Object> response = restTemplate.exchange(
                     applicationTrackerBaseUrl + "/api/v1/applications/" + applicationId + "/withdraw-generated",
@@ -368,9 +367,9 @@ public class JobSearchController {
                 return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                         .body(DOWNSTREAM_OWNERSHIP_FAILURE);
             }
-            cleanupGeneratedDocuments(existingRecord, accessToken);
-            log.info("Generated application withdraw completed responseStatus={} durationMs={}",
+            log.info("Generated application withdraw resolved responseStatus={} workflowStatus={} durationMs={}",
                     response.getStatusCode().value(),
+                    result.operationStatus(),
                     (System.nanoTime() - startedAt) / 1_000_000);
             return ResponseEntity
                     .status(response.getStatusCode())
@@ -526,34 +525,6 @@ public class JobSearchController {
         }
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(APPLICATION_TRACKER_UNAVAILABLE);
-    }
-
-    private void cleanupGeneratedDocuments(ApplicationRecordResponse record, Jwt accessToken) {
-        if (record == null) {
-            return;
-        }
-        deleteGeneratedDocument(record.cvDocumentId(), accessToken);
-        deleteGeneratedDocument(record.coverLetterDocumentId(), accessToken);
-    }
-
-    private void deleteGeneratedDocument(String documentId, Jwt accessToken) {
-        if (documentId == null || documentId.isBlank()) {
-            return;
-        }
-        try {
-            log.info("Deleting generated document during withdraw");
-            restTemplate.exchange(
-                    documentStoreBaseUrl + "/api/v1/documents/{id}",
-                    org.springframework.http.HttpMethod.DELETE,
-                    authenticatedEntity(accessToken),
-                    Void.class,
-                    UUID.fromString(documentId));
-            log.info("Generated document deleted during withdraw");
-        } catch (IllegalArgumentException e) {
-            log.warn("Skipping generated document cleanup for malformed document reference");
-        } catch (RestClientException e) {
-            log.warn("Generated document cleanup failed error={}", e.getClass().getSimpleName(), e);
-        }
     }
 
     private static final class ApplicationNotFoundException extends RuntimeException {

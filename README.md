@@ -28,13 +28,14 @@ committed.
 Authentication uses RS256 access tokens verified from the platform JWKS.
 Runtime configuration includes `AUTH_JWKS_URI`, `JOB_FINDER_JWT_ISSUER`,
 `JOB_FINDER_JWT_AUDIENCE`, `JOB_SERVICE_URL`, `USER_PROFILE_SERVICE_URL`,
-`APPLICATION_TRACKER_SERVICE_URL`, and `DOCUMENT_STORE_SERVICE_URL`. No signing
+and `APPLICATION_TRACKER_SERVICE_URL`. No signing
 credential is accepted or stored by this service.
 
 Application list, status, and generated-withdraw routes derive ownership from
 the validated token subject. Job Finder forwards that Bearer token to
-Application Tracker, pre-authorizes resource mutations, denies foreign and
-unknown IDs identically, and forwards the token to generated-document cleanup.
+Application Tracker and denies foreign and unknown IDs identically. Application
+Tracker owns the durable generated-withdrawal operation and its atomic Document
+Store cleanup; Job Finder does not perform a second best-effort delete.
 Job Finder also creates a request-scoped generated Job Service client and
 forwards the original Bearer token; it never relays a caller-supplied identity
 header. Job Service independently verifies the token and derives search

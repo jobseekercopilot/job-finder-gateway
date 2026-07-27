@@ -83,13 +83,15 @@ Authorization: Bearer <access-token>
 `{userId}` must exactly match the token subject. Job Finder constructs the
 downstream list path from the subject and never forwards `X-User-Id`.
 
-Status and generated-withdraw routes first load the application with the
-validated Bearer token and verify that its `userId` equals the token subject.
-Only an owned record can reach the downstream mutation. Unknown and foreign
-record IDs return the same redacted `404`; downstream response ownership is
-also checked before returning data.
+Status routes first load the application with the validated Bearer token and
+verify that its `userId` equals the token subject. Generated withdrawal is one
+owner-scoped Application Tracker command: Tracker durably records the operation,
+coordinates atomic Document Store cleanup and returns either completed `200` or
+recovery-pending `202`. Job Finder preserves that response and does not issue
+document deletes. Unknown and foreign record IDs return the same redacted `404`;
+downstream response resource identity is checked before returning data.
 
-Generated-document cleanup receives the same Bearer token. Request logs replace
+Request logs replace
 application IDs and list-owner path segments with placeholders. Framework web
 logging stays at INFO and the first-request handler lookup warning is suppressed
 so it cannot emit the unredacted path before the application filter.

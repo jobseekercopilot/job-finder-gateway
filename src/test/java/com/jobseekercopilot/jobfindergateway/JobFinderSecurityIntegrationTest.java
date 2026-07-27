@@ -41,6 +41,8 @@ class JobFinderSecurityIntegrationTest {
             UUID.fromString("00000000-0000-0000-0000-000000000002");
     private static final UUID UNKNOWN_APPLICATION =
             UUID.fromString("00000000-0000-0000-0000-000000000003");
+    private static final UUID PENDING_WITHDRAWAL_APPLICATION =
+            UUID.fromString("00000000-0000-0000-0000-000000000004");
     private static final TestJwksServer JWKS = new TestJwksServer();
     private static final TestDownstreamServer DOWNSTREAM = new TestDownstreamServer();
 
@@ -52,7 +54,6 @@ class JobFinderSecurityIntegrationTest {
         registry.add("services.user-profile.url", DOWNSTREAM::baseUrl);
         registry.add("services.job-service.url", DOWNSTREAM::baseUrl);
         registry.add("services.application-tracker.url", DOWNSTREAM::baseUrl);
-        registry.add("services.document-store.url", DOWNSTREAM::baseUrl);
     }
 
     @AfterAll
@@ -231,7 +232,7 @@ class JobFinderSecurityIntegrationTest {
     }
 
     @Test
-    void ownedStatusAndWithdrawForwardBearerAndKeepDocumentCleanupOwnerScoped() {
+    void ownedStatusAndWithdrawForwardBearerWithoutDuplicatingTrackerCleanup() {
         String token = JWKS.validToken("alice");
 
         ResponseEntity<Map> status = restTemplate.exchange(
@@ -257,11 +258,28 @@ class JobFinderSecurityIntegrationTest {
         assertTrue(DOWNSTREAM.applicationCalls().stream().anyMatch(call ->
                 call.method().equals("POST")
                         && call.path().endsWith("/withdraw-generated")));
-        assertEquals(2, DOWNSTREAM.documentCalls().size());
+        assertEquals(0, DOWNSTREAM.documentCalls().size());
         assertTrue(DOWNSTREAM.applicationCalls().stream().allMatch(call ->
                 call.authorization().equals("Bearer " + token)));
-        assertTrue(DOWNSTREAM.documentCalls().stream().allMatch(call ->
-                call.authorization().equals("Bearer " + token)));
+    }
+
+    @Test
+    void recoverableWithdrawalPreservesTrackerAcceptedOutcome() {
+        String token = JWKS.validToken("alice");
+
+        ResponseEntity<Map> withdraw = restTemplate.exchange(
+                "/api/jobs/applications/" + PENDING_WITHDRAWAL_APPLICATION
+                        + "/withdraw-generated",
+                HttpMethod.POST,
+                new HttpEntity<>(authenticated(token)),
+                Map.class);
+
+        assertEquals(HttpStatus.ACCEPTED, withdraw.getStatusCode());
+        assertEquals(Boolean.FALSE, withdraw.getBody().get("withdrawn"));
+        assertEquals("RECOVERY_REQUIRED", withdraw.getBody().get("operationStatus"));
+        assertEquals(Boolean.TRUE, withdraw.getBody().get("retryable"));
+        assertEquals("DOCUMENT_STORE_UNAVAILABLE", withdraw.getBody().get("recoveryCode"));
+        assertEquals(0, DOWNSTREAM.documentCalls().size());
     }
 
     private ResponseEntity<Map> search(HttpHeaders headers, String body) {
@@ -400,7 +418,9 @@ class JobFinderSecurityIntegrationTest {
 
             UUID id = path.contains(FOREIGN_APPLICATION.toString())
                     ? FOREIGN_APPLICATION
-                    : OWNED_APPLICATION;
+                    : path.contains(PENDING_WITHDRAWAL_APPLICATION.toString())
+                            ? PENDING_WITHDRAWAL_APPLICATION
+                            : OWNED_APPLICATION;
             String owner = id.equals(FOREIGN_APPLICATION) ? "mallory" : "alice";
 
             if (call.method().equals("GET")) {
@@ -412,11 +432,29 @@ class JobFinderSecurityIntegrationTest {
                 return;
             }
             if (call.method().equals("POST") && path.endsWith("/withdraw-generated")) {
+                if (id.equals(PENDING_WITHDRAWAL_APPLICATION)) {
+                    respond(exchange, 202, """
+                            {
+                              "applicationId": "%s",
+                              "status": "NEW",
+                              "withdrawn": false,
+                              "operationId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                              "operationStatus": "RECOVERY_REQUIRED",
+                              "retryable": true,
+                              "recoveryCode": "DOCUMENT_STORE_UNAVAILABLE",
+                              "message": "Generated application withdrawal is pending recovery."
+                            }
+                            """.formatted(id));
+                    return;
+                }
                 respond(exchange, 200, """
                         {
                           "applicationId": "%s",
                           "status": "NEW",
                           "withdrawn": true,
+                          "operationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                          "operationStatus": "COMPLETED",
+                          "retryable": false,
                           "message": "Generated application withdrawn"
                         }
                         """.formatted(id));

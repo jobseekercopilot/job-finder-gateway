@@ -1,4 +1,4 @@
 repository=jobseekercopilot/job-service
-revision=badf3f061732a0bc662722227ee19f877dd463da
+revision=2cce83ddc057967b7a20d43c970499bffe0dd31f
 path=api/openapi.yaml
-sha256=6465ccfab96a5df67e3bb16a06c3edc4d2a76735b2d789a2237b264636127506
+sha256=3d3af14c64393df44b605226bb5950bc442ed901f43f12418f65a7b5d80408ce

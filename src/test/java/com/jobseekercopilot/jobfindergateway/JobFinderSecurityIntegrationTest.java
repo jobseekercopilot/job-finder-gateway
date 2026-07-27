@@ -103,7 +103,10 @@ class JobFinderSecurityIntegrationTest {
                     "latitude": 51.501,
                     "longitude": -0.142
                   },
-                  "selectedProviders": ["REED", "ADZUNA"]
+                  "selectedProviders": ["REED", "ADZUNA"],
+                  "page": 2,
+                  "pageSize": 20,
+                  "sort": "NEWEST_POSTED"
                 }
                 """);
 
@@ -114,6 +117,9 @@ class JobFinderSecurityIntegrationTest {
         assertEquals("SW1A 1AA", forwarded.at("/homeLocation/postcode").asText());
         assertEquals("REED", forwarded.at("/selectedProviders/0").asText());
         assertEquals("ADZUNA", forwarded.at("/selectedProviders/1").asText());
+        assertEquals(2, forwarded.at("/page").asInt());
+        assertEquals(20, forwarded.at("/pageSize").asInt());
+        assertEquals("NEWEST_POSTED", forwarded.at("/sort").asText());
         assertEquals(
                 "canonical-1",
                 objectMapper.valueToTree(response.getBody()).at("/jobs/0/canonicalJobId").asText());
@@ -129,7 +135,36 @@ class JobFinderSecurityIntegrationTest {
         assertEquals(
                 "2.0",
                 objectMapper.valueToTree(response.getBody()).at("/jobs/0/canonicalSchemaVersion").asText());
+        assertEquals(
+                5,
+                objectMapper.valueToTree(response.getBody()).at("/totalPages").asInt());
+        assertEquals(
+                "NEWEST_POSTED",
+                objectMapper.valueToTree(response.getBody()).at("/sort").asText());
         assertNull(DOWNSTREAM.profileAuthorization());
+    }
+
+    @Test
+    void omittedPagingFieldsRemainUnsetForJobServiceDefaults() throws Exception {
+        ResponseEntity<Map> response = search(
+                authenticated(JWKS.validToken("default-paging-user")),
+                """
+                {
+                  "aspirations": {
+                    "desiredRoles": ["Platform Engineer"],
+                    "locations": ["London"]
+                  }
+                }
+                """);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        JsonNode forwarded = objectMapper.readTree(DOWNSTREAM.jobBody());
+        assertTrue(forwarded.at("/page").isMissingNode()
+                || forwarded.at("/page").isNull());
+        assertTrue(forwarded.at("/pageSize").isMissingNode()
+                || forwarded.at("/pageSize").isNull());
+        assertTrue(forwarded.at("/sort").isMissingNode()
+                || forwarded.at("/sort").isNull());
     }
 
     @Test
@@ -527,8 +562,10 @@ class JobFinderSecurityIntegrationTest {
                       }],
                       "resultsByTargetRole": [],
                       "totalResults": 1,
-                      "page": 0,
+                      "page": 2,
                       "pageSize": 20,
+                      "totalPages": 5,
+                      "sort": "NEWEST_POSTED",
                       "providerResults": [{
                         "provider": "REED",
                         "status": "SUCCESS",

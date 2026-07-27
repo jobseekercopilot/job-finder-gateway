@@ -42,6 +42,9 @@ Job Finder also creates a request-scoped generated Job Service client and
 forwards the original Bearer token; it never relays a caller-supplied identity
 header. Job Service independently verifies the token and derives search
 identity from its subject.
+The browser-facing API 1.3 passes Job Service API 2.1 `page`, `pageSize` and
+`sort` through unchanged and returns its bounded aggregate `totalPages` and
+effective sort metadata.
 
 The same boundary provides `POST/GET /api/jobs/saved` and
 `GET/DELETE /api/jobs/saved/{savedJobId}`. Job Service remains the authority

@@ -22,9 +22,9 @@ done
 
 test "$(wc -l < "$job_source" | tr -d ' ')" = 4
 grep -Fx 'repository=jobseekercopilot/job-service' "$job_source" >/dev/null
-grep -Fx 'revision=badf3f061732a0bc662722227ee19f877dd463da' "$job_source" >/dev/null
+grep -Fx 'revision=2cce83ddc057967b7a20d43c970499bffe0dd31f' "$job_source" >/dev/null
 grep -Fx 'path=api/openapi.yaml' "$job_source" >/dev/null
-grep -Fx 'sha256=6465ccfab96a5df67e3bb16a06c3edc4d2a76735b2d789a2237b264636127506' "$job_source" >/dev/null
+grep -Fx 'sha256=3d3af14c64393df44b605226bb5950bc442ed901f43f12418f65a7b5d80408ce' "$job_source" >/dev/null
 
 test "$(wc -l < "$profile_source" | tr -d ' ')" = 4
 grep -Fx 'repository=jobseekercopilot/user-profile-service' "$profile_source" >/dev/null
@@ -42,7 +42,7 @@ done
 grep -Fx '      - bearerAuth: []' "$job_contract" >/dev/null
 test "$(grep -c '^      - bearerAuth: \[\]$' "$job_contract")" = 5
 grep -Fx '      scheme: bearer' "$job_contract" >/dev/null
-grep -Fx '  version: 2.0.0' "$job_contract" >/dev/null
+grep -Fx '  version: 2.1.0' "$job_contract" >/dev/null
 if grep -F 'name: X-User-Id' "$job_contract" >/dev/null; then
     echo "contract policy: Job Service contract reintroduced raw identity header" >&2
     exit 1
@@ -50,7 +50,11 @@ fi
 for required_field in \
     homeLocation \
     selectedProviders \
+    page \
+    pageSize \
+    sort \
     resultsByTargetRole \
+    totalPages \
     providerResults \
     searchStatus \
     matchingStatus \
@@ -72,6 +76,11 @@ for required_field in \
     updatedAt \
     job; do
     grep -Fx "        $required_field:" "$job_contract" >/dev/null
+done
+
+for sort in MOST_RELEVANT CLOSEST HIGHEST_SALARY NEWEST_POSTED \
+    OLDEST_POSTED COMPANY_AZ JOB_TITLE_AZ; do
+    grep -Fx "          - $sort" "$job_contract" >/dev/null
 done
 
 grep -Fx '    SavedJobResponse:' "$job_contract" >/dev/null

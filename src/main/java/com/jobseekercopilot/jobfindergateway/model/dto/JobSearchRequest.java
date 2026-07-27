@@ -1,5 +1,6 @@
 package com.jobseekercopilot.jobfindergateway.model.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
 public class JobSearchRequest {
@@ -7,6 +8,34 @@ public class JobSearchRequest {
     private WorkPreferences workPreferences;
     private HomeLocation homeLocation;
     private List<String> selectedProviders;
+    @Schema(
+            description = "One-based aggregate result page. Omitted values use the Job Service default.",
+            minimum = "1",
+            maximum = "100",
+            defaultValue = "1"
+    )
+    private Integer page;
+    @Schema(
+            description = "Maximum aggregate results returned on one page. Omitted values use the Job Service default.",
+            minimum = "1",
+            maximum = "50",
+            defaultValue = "10"
+    )
+    private Integer pageSize;
+    @Schema(
+            description = "Stable Job Service aggregate result order.",
+            allowableValues = {
+                    "MOST_RELEVANT",
+                    "CLOSEST",
+                    "HIGHEST_SALARY",
+                    "NEWEST_POSTED",
+                    "OLDEST_POSTED",
+                    "COMPANY_AZ",
+                    "JOB_TITLE_AZ"
+            },
+            defaultValue = "MOST_RELEVANT"
+    )
+    private String sort;
 
     public JobSearchRequest() {
     }
@@ -41,6 +70,30 @@ public class JobSearchRequest {
 
     public void setSelectedProviders(List<String> selectedProviders) {
         this.selectedProviders = selectedProviders;
+    }
+
+    public Integer getPage() {
+        return page;
+    }
+
+    public void setPage(Integer page) {
+        this.page = page;
+    }
+
+    public Integer getPageSize() {
+        return pageSize;
+    }
+
+    public void setPageSize(Integer pageSize) {
+        this.pageSize = pageSize;
+    }
+
+    public String getSort() {
+        return sort;
+    }
+
+    public void setSort(String sort) {
+        this.sort = sort;
     }
 
     public static class Aspirations {

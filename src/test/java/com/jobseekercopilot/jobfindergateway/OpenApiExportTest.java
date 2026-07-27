@@ -31,7 +31,7 @@ class OpenApiExportTest {
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at("/security/0/bearerAuth").isArray());
         org.junit.jupiter.api.Assertions.assertEquals(
-                "1.4.0",
+                "1.5.0",
                 contract.at("/info/version").asText());
         org.junit.jupiter.api.Assertions.assertEquals(
                 1,

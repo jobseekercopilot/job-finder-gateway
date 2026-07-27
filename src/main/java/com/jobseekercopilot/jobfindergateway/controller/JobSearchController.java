@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jobseekercopilot.generated.jobservice.model.ReedJobSearchResponse;
 import com.jobseekercopilot.jobfindergateway.client.JobServiceClientFactory;
 import com.jobseekercopilot.jobfindergateway.client.UserProfileClientFactory;
+import com.jobseekercopilot.jobfindergateway.http.DownstreamFailureResponses;
 import com.jobseekercopilot.jobfindergateway.logging.CorrelationIdFilter;
 import com.jobseekercopilot.jobfindergateway.model.dto.ApiErrorResponse;
 import com.jobseekercopilot.jobfindergateway.model.dto.ApplicationRecordResponse;
@@ -53,13 +54,6 @@ import java.util.UUID;
 public class JobSearchController {
 
     private static final Logger log = LoggerFactory.getLogger(JobSearchController.class);
-    private static final String APPLICATION_NOT_FOUND =
-            "{\"error\":\"APPLICATION_NOT_FOUND\",\"message\":\"Application record not found\"}";
-    private static final String APPLICATION_TRACKER_UNAVAILABLE =
-            "{\"error\":\"SERVICE_UNAVAILABLE\",\"message\":\"Application tracker service is currently unavailable\"}";
-    private static final String DOWNSTREAM_OWNERSHIP_FAILURE =
-            "{\"error\":\"SERVICE_UNAVAILABLE\",\"message\":\"Application ownership could not be verified\"}";
-
     private final UserProfileClientFactory userProfileClientFactory;
     private final JobServiceClientFactory jobServiceClientFactory;
     private final ObjectMapper objectMapper;
@@ -124,8 +118,14 @@ public class JobSearchController {
                         (System.nanoTime() - startedAt) / 1_000_000,
                         e.getClass().getSimpleName(),
                         e);
-                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                        .body("{\"error\":\"SERVICE_UNAVAILABLE\",\"message\":\"User profile service is currently unavailable\"}");
+                return downstreamFailure(
+                        e,
+                        "JOB_FINDER_PROFILE_TIMEOUT",
+                        "The user profile service did not respond in time.",
+                        "JOB_FINDER_INVALID_PROFILE_RESPONSE",
+                        "The user profile service returned an invalid response.",
+                        "JOB_FINDER_PROFILE_UNAVAILABLE",
+                        "The user profile service is currently unavailable.");
             }
 
             if (userProfile == null) {
@@ -168,8 +168,7 @@ public class JobSearchController {
                         (System.nanoTime() - startedAt) / 1_000_000,
                         e.getClass().getSimpleName(),
                         e);
-                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                        .body("{\"error\":\"SERVICE_UNAVAILABLE\",\"message\":\"Job search service is currently unavailable\"}");
+                return jobServiceFailure(e);
             }
         }
 
@@ -188,8 +187,7 @@ public class JobSearchController {
                     (System.nanoTime() - startedAt) / 1_000_000,
                     e.getClass().getSimpleName(),
                     e);
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .body("{\"error\":\"SERVICE_UNAVAILABLE\",\"message\":\"Job search service is currently unavailable\"}");
+            return jobServiceFailure(e);
         }
     }
 
@@ -259,7 +257,9 @@ public class JobSearchController {
                 log.error("application-tracker-service list failed ownership validation durationMs={}",
                         (System.nanoTime() - startedAt) / 1_000_000);
                 return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                        .body(DOWNSTREAM_OWNERSHIP_FAILURE);
+                        .body(apiError(
+                                "JOB_FINDER_INVALID_APPLICATION_RESPONSE",
+                                "The application service returned an invalid response."));
             }
             log.info("application-tracker-service list returned responseStatus={} count={} durationMs={}",
                     response.getStatusCode().value(),
@@ -271,8 +271,7 @@ public class JobSearchController {
                     (System.nanoTime() - startedAt) / 1_000_000,
                     e.getClass().getSimpleName(),
                     e);
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .body(APPLICATION_TRACKER_UNAVAILABLE);
+            return applicationTrackerFailure(e);
         }
     }
 
@@ -299,7 +298,9 @@ public class JobSearchController {
                     normalizedStatus,
                     (System.nanoTime() - startedAt) / 1_000_000);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body("{\"error\":\"INVALID_STATUS\",\"message\":\"Unsupported application status\"}");
+                    .body(apiError(
+                            "JOB_FINDER_INVALID_APPLICATION_STATUS",
+                            "The application status is not supported."));
         }
 
         try {
@@ -318,7 +319,9 @@ public class JobSearchController {
                 log.error("application-tracker-service status response failed ownership validation durationMs={}",
                         (System.nanoTime() - startedAt) / 1_000_000);
                 return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                        .body(DOWNSTREAM_OWNERSHIP_FAILURE);
+                        .body(apiError(
+                                "JOB_FINDER_INVALID_APPLICATION_RESPONSE",
+                                "The application service returned an invalid response."));
             }
             log.info("application-tracker-service status update returned status={} responseStatus={} durationMs={}",
                     normalizedStatus,
@@ -341,8 +344,7 @@ public class JobSearchController {
                     (System.nanoTime() - startedAt) / 1_000_000,
                     e.getClass().getSimpleName(),
                     e);
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .body(APPLICATION_TRACKER_UNAVAILABLE);
+            return applicationTrackerFailure(e);
         }
     }
 
@@ -381,7 +383,9 @@ public class JobSearchController {
                 log.error("application-tracker-service withdraw response failed resource validation durationMs={}",
                         (System.nanoTime() - startedAt) / 1_000_000);
                 return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                        .body(DOWNSTREAM_OWNERSHIP_FAILURE);
+                        .body(apiError(
+                                "JOB_FINDER_INVALID_APPLICATION_RESPONSE",
+                                "The application service returned an invalid response."));
             }
             log.info("Generated application withdraw resolved responseStatus={} workflowStatus={} durationMs={}",
                     response.getStatusCode().value(),
@@ -404,8 +408,7 @@ public class JobSearchController {
                     (System.nanoTime() - startedAt) / 1_000_000,
                     e.getClass().getSimpleName(),
                     e);
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .body(APPLICATION_TRACKER_UNAVAILABLE);
+            return applicationTrackerFailure(e);
         }
     }
 
@@ -525,11 +528,15 @@ public class JobSearchController {
         return new HttpEntity<>(authenticatedHeaders(accessToken));
     }
 
-    private ResponseEntity<String> applicationNotFound() {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(APPLICATION_NOT_FOUND);
+    private ResponseEntity<ApiErrorResponse> applicationNotFound() {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(apiError(
+                        "JOB_FINDER_APPLICATION_NOT_FOUND",
+                        "The application record was not found."));
     }
 
-    private ResponseEntity<String> sanitizedApplicationFailure(HttpStatusCodeException exception) {
+    private ResponseEntity<ApiErrorResponse> sanitizedApplicationFailure(
+            HttpStatusCodeException exception) {
         if (exception.getStatusCode().value() == HttpStatus.NOT_FOUND.value()
                 || exception.getStatusCode().value() == HttpStatus.FORBIDDEN.value()) {
             return applicationNotFound();
@@ -537,10 +544,65 @@ public class JobSearchController {
         if (exception.getStatusCode().value() == HttpStatus.BAD_REQUEST.value()
                 || exception.getStatusCode().value() == HttpStatus.CONFLICT.value()) {
             return ResponseEntity.status(exception.getStatusCode())
-                    .body("{\"error\":\"APPLICATION_OPERATION_REJECTED\",\"message\":\"Application operation was rejected\"}");
+                    .body(apiError(
+                            "JOB_FINDER_APPLICATION_OPERATION_REJECTED",
+                            "The application operation was rejected."));
         }
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .body(APPLICATION_TRACKER_UNAVAILABLE);
+        return DownstreamFailureResponses.unavailable(
+                "JOB_FINDER_APPLICATION_TRACKER_UNAVAILABLE",
+                "The application service is currently unavailable.");
+    }
+
+    private ResponseEntity<ApiErrorResponse> jobServiceFailure(Exception failure) {
+        return downstreamFailure(
+                failure,
+                "JOB_FINDER_JOB_SERVICE_TIMEOUT",
+                "The job service did not respond in time.",
+                "JOB_FINDER_INVALID_JOB_SERVICE_RESPONSE",
+                "The job service returned an invalid response.",
+                "JOB_FINDER_JOB_SERVICE_UNAVAILABLE",
+                "The job service is currently unavailable.");
+    }
+
+    private ResponseEntity<ApiErrorResponse> applicationTrackerFailure(
+            Exception failure) {
+        return downstreamFailure(
+                failure,
+                "JOB_FINDER_APPLICATION_TRACKER_TIMEOUT",
+                "The application service did not respond in time.",
+                "JOB_FINDER_INVALID_APPLICATION_RESPONSE",
+                "The application service returned an invalid response.",
+                "JOB_FINDER_APPLICATION_TRACKER_UNAVAILABLE",
+                "The application service is currently unavailable.");
+    }
+
+    private ResponseEntity<ApiErrorResponse> downstreamFailure(
+            Exception failure,
+            String timeoutCode,
+            String timeoutMessage,
+            String malformedCode,
+            String malformedMessage,
+            String unavailableCode,
+            String unavailableMessage) {
+        if (DownstreamFailureResponses.isTimeout(failure)) {
+            return DownstreamFailureResponses.timeout(timeoutCode, timeoutMessage);
+        }
+        if (DownstreamFailureResponses.isMalformedResponse(failure)) {
+            return DownstreamFailureResponses.badGateway(
+                    malformedCode,
+                    malformedMessage);
+        }
+        return DownstreamFailureResponses.unavailable(
+                unavailableCode,
+                unavailableMessage);
+    }
+
+    private ApiErrorResponse apiError(String code, String message) {
+        return new ApiErrorResponse(
+                "1",
+                code,
+                message,
+                CorrelationIdFilter.currentCorrelationId());
     }
 
     private static final class ApplicationNotFoundException extends RuntimeException {

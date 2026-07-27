@@ -13,8 +13,6 @@ Service, and maps its response. It does not call providers directly.
   its boundary, but pre-authorization cannot secure direct tracker access or
   remove a check/use race. This is tracked by
   [APP-03](https://github.com/jobseekercopilot/application-tracker-service/issues/4).
-- **P1 resilience:** the downstream `RestTemplate` has no connect or response
-  timeout and there is no request deadline or cancellation policy.
 - **P1 secret safety:** the inspected source and legacy history contained
   non-empty JWT-secret defaults. Current source no longer accepts a shared
   signing secret, but credential rotation/history decisions remain required.
@@ -50,9 +48,18 @@ Service, and maps its response. It does not call providers directly.
   salary, providers, employment types, paging and sort values are validated
   before downstream work.
 - Invalid or malformed requests and incomplete profiles return the stable
-  versioned API 1.4 error schema; oversized bodies return the same schema with
+  versioned API 1.5 error schema; oversized bodies return the same schema with
   `413`. Correlation IDs are bounded and restricted to log/header-safe
   characters, and validation tests prove rejected requests call no downstream.
+- The shared HTTP client applies finite pool-acquisition, connect and response
+  timeouts. Each browser request has one monotonic end-to-end budget and every
+  later downstream call receives only the remaining time. Invalid timeout
+  configuration fails startup rather than silently disabling a bound, and
+  automatic transport retries are disabled.
+- Search, profile, saved-job and application dependency failures use the stable
+  correlated error schema: `504` for timeouts, `502` for malformed responses,
+  and `503` for unavailable services. Local delayed-response evidence proves a
+  timed-out profile fallback does not continue to Job Service.
 - Saved-job integration tests cover authentication, caller identity-header
   stripping, per-request Bearer forwarding, create/replay outcomes, list/get,
   idempotent delete, non-enumerating not-found behavior and redacted dependency
@@ -84,8 +91,6 @@ services using subject-aware APIs.
 - Clean-clone `mvn -B clean verify` and container build.
 - Application Tracker APP-03 evidence for atomic subject-aware application
   access and direct-call rejection.
-- Integration evidence for downstream timeout and structured downstream
-  failures.
 - Secret scan of every migrated ref and documented rotation/history decision.
 - Load evidence that gateway timeouts fit inside the end-user latency budget.
 

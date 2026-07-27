@@ -30,8 +30,8 @@ committed.
 Authentication uses RS256 access tokens verified from the platform JWKS.
 Runtime configuration includes `AUTH_JWKS_URI`, `JOB_FINDER_JWT_ISSUER`,
 `JOB_FINDER_JWT_AUDIENCE`, `JOB_SERVICE_URL`, `USER_PROFILE_SERVICE_URL`,
-`APPLICATION_TRACKER_SERVICE_URL`, and
-`JOB_FINDER_MAX_SEARCH_REQUEST_BYTES` (default 65,536). No signing
+`APPLICATION_TRACKER_SERVICE_URL`, `JOB_FINDER_MAX_SEARCH_REQUEST_BYTES`
+(default 65,536), and the downstream timeout settings documented below. No signing
 credential is accepted or stored by this service.
 
 Application list, status, and generated-withdraw routes derive ownership from
@@ -43,11 +43,24 @@ Job Finder also creates a request-scoped generated Job Service client and
 forwards the original Bearer token; it never relays a caller-supplied identity
 header. Job Service independently verifies the token and derives search
 identity from its subject.
-The browser-facing API 1.4 validates bounded search criteria and caps request
+The browser-facing API 1.5 validates bounded search criteria and caps request
 bodies before any downstream call. It passes valid Job Service API 2.1 `page`,
 `pageSize` and `sort` through unchanged and returns its bounded aggregate
 `totalPages` and effective sort metadata. Invalid, malformed and oversized
 requests use a stable versioned error with safe correlation metadata.
+
+Every downstream call has a finite connection-pool, connection, and response
+timeout. The defaults are 250 ms, 500 ms, and 2,500 ms respectively, configured
+with `JOB_FINDER_CONNECTION_REQUEST_TIMEOUT_MS`,
+`JOB_FINDER_CONNECT_TIMEOUT_MS`, and `JOB_FINDER_RESPONSE_TIMEOUT_MS`. All
+downstream work for one browser request also shares a four-second monotonic
+budget (`JOB_FINDER_REQUEST_DEADLINE_MS`), so profile fallback cannot start a
+fresh full-duration Job Service wait after consuming the earlier budget.
+Values outside 1–60,000 ms fail application startup. Timeout responses use
+`504`; malformed downstream responses use `502`; unavailable dependencies use
+`503`. Automatic transport retries are disabled so the gateway never repeats
+an unsafe call and never hides retry time outside the request budget. All
+failures use the same safe versioned error schema and correlation ID.
 
 The same boundary provides `POST/GET /api/jobs/saved` and
 `GET/DELETE /api/jobs/saved/{savedJobId}`. Job Service remains the authority

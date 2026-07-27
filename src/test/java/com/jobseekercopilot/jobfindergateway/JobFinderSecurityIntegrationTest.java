@@ -15,8 +15,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -69,6 +72,10 @@ class JobFinderSecurityIntegrationTest {
         registry.add("services.user-profile.url", DOWNSTREAM::baseUrl);
         registry.add("services.job-service.url", DOWNSTREAM::baseUrl);
         registry.add("services.application-tracker.url", DOWNSTREAM::baseUrl);
+        registry.add("job-finder.downstream.connect-timeout-ms", () -> 100);
+        registry.add("job-finder.downstream.connection-request-timeout-ms", () -> 100);
+        registry.add("job-finder.downstream.response-timeout-ms", () -> 500);
+        registry.add("job-finder.downstream.request-deadline-ms", () -> 700);
     }
 
     @AfterAll
@@ -96,6 +103,7 @@ class JobFinderSecurityIntegrationTest {
         String token = JWKS.validToken("alice");
         HttpHeaders headers = authenticated(token);
         headers.set("X-User-Id", "victim");
+        headers.set("X-Correlation-Id", "search-boundary");
 
         ResponseEntity<Map> response = search(headers, """
                 {
@@ -121,6 +129,7 @@ class JobFinderSecurityIntegrationTest {
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertEquals("Bearer " + token, DOWNSTREAM.jobAuthorization());
+        assertEquals("search-boundary", DOWNSTREAM.jobCorrelationId());
         assertNull(DOWNSTREAM.jobUserId());
         JsonNode forwarded = objectMapper.readTree(DOWNSTREAM.jobBody());
         assertEquals("SW1A 1AA", forwarded.at("/homeLocation/postcode").asText());
@@ -369,6 +378,50 @@ class JobFinderSecurityIntegrationTest {
     }
 
     @Test
+    void profileTimeoutExhaustsTheSharedBudgetWithoutStartingJobSearch() {
+        DOWNSTREAM.setProfileDelayMs(900);
+        HttpHeaders headers = authenticated(JWKS.validToken("slow-profile"));
+        headers.set("X-Correlation-Id", "slow-profile-request");
+
+        ResponseEntity<Map> response = restTemplate.exchange(
+                "/api/jobs/search",
+                HttpMethod.POST,
+                new HttpEntity<>(headers),
+                Map.class);
+
+        assertEquals(HttpStatus.GATEWAY_TIMEOUT, response.getStatusCode());
+        assertEquals("1", response.getBody().get("schemaVersion"));
+        assertEquals("JOB_FINDER_PROFILE_TIMEOUT", response.getBody().get("code"));
+        assertEquals("slow-profile-request", response.getBody().get("correlationId"));
+        assertEquals("slow-profile-request", DOWNSTREAM.profileCorrelationId());
+        assertNull(DOWNSTREAM.jobAuthorization());
+    }
+
+    @Test
+    void malformedJobServiceResponseReturnsStableBadGatewayError() {
+        DOWNSTREAM.setMalformedJobResponse(true);
+        HttpHeaders headers = authenticated(JWKS.validToken("malformed-downstream"));
+        headers.set("X-Correlation-Id", "malformed-job-response");
+
+        ResponseEntity<Map> response = search(headers, """
+                {
+                  "aspirations": {
+                    "desiredRoles": ["Platform Engineer"],
+                    "locations": ["London"]
+                  }
+                }
+                """);
+
+        assertEquals(HttpStatus.BAD_GATEWAY, response.getStatusCode());
+        assertEquals("1", response.getBody().get("schemaVersion"));
+        assertEquals(
+                "JOB_FINDER_INVALID_JOB_SERVICE_RESPONSE",
+                response.getBody().get("code"));
+        assertEquals("malformed-job-response", response.getBody().get("correlationId"));
+        assertFalse(response.getBody().toString().contains("Json"));
+    }
+
+    @Test
     void savedJobBoundaryPreservesOwnerTokenOutcomeAndServerIdentity() {
         String token = JWKS.validToken("saved-owner");
         HttpHeaders headers = authenticated(token);
@@ -442,8 +495,11 @@ class JobFinderSecurityIntegrationTest {
 
         assertEquals(HttpStatus.NOT_FOUND, missing.getStatusCode());
         assertEquals(HttpStatus.NOT_FOUND, otherOwner.getStatusCode());
-        assertEquals(missing.getBody(), otherOwner.getBody());
-        assertEquals("SAVED_JOB_NOT_FOUND", missing.getBody().get("error"));
+        assertEquals(missing.getBody().get("code"), otherOwner.getBody().get("code"));
+        assertEquals(missing.getBody().get("message"), otherOwner.getBody().get("message"));
+        assertEquals("SAVED_JOB_NOT_FOUND", missing.getBody().get("code"));
+        assertEquals("1", missing.getBody().get("schemaVersion"));
+        assertTrue(missing.getBody().containsKey("correlationId"));
     }
 
     @Test
@@ -457,7 +513,11 @@ class JobFinderSecurityIntegrationTest {
                 Map.class);
 
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, response.getStatusCode());
-        assertEquals("SAVED_JOB_SERVICE_UNAVAILABLE", response.getBody().get("error"));
+        assertEquals(
+                "JOB_FINDER_SAVED_JOB_UNAVAILABLE",
+                response.getBody().get("code"));
+        assertEquals("1", response.getBody().get("schemaVersion"));
+        assertTrue(response.getBody().containsKey("correlationId"));
         assertFalse(response.getBody().toString().contains("database-host"));
     }
 
@@ -533,7 +593,9 @@ class JobFinderSecurityIntegrationTest {
                 Map.class);
 
         assertEquals(HttpStatus.NOT_FOUND, crossUser.getStatusCode());
-        assertEquals("APPLICATION_NOT_FOUND", crossUser.getBody().get("error"));
+        assertEquals(
+                "JOB_FINDER_APPLICATION_NOT_FOUND",
+                crossUser.getBody().get("code"));
         assertTrue(DOWNSTREAM.applicationCalls().isEmpty());
     }
 
@@ -557,8 +619,11 @@ class JobFinderSecurityIntegrationTest {
 
         assertEquals(HttpStatus.NOT_FOUND, foreign.getStatusCode());
         assertEquals(HttpStatus.NOT_FOUND, unknown.getStatusCode());
-        assertEquals(foreign.getBody(), unknown.getBody());
-        assertEquals("APPLICATION_NOT_FOUND", foreign.getBody().get("error"));
+        assertEquals(foreign.getBody().get("code"), unknown.getBody().get("code"));
+        assertEquals(foreign.getBody().get("message"), unknown.getBody().get("message"));
+        assertEquals(
+                "JOB_FINDER_APPLICATION_NOT_FOUND",
+                foreign.getBody().get("code"));
         assertFalse(DOWNSTREAM.applicationCalls().stream().anyMatch(call ->
                 call.method().equals("PATCH")));
         assertTrue(DOWNSTREAM.applicationCalls().stream().allMatch(call ->
@@ -699,9 +764,13 @@ class JobFinderSecurityIntegrationTest {
     private static final class TestDownstreamServer implements AutoCloseable {
 
         private final AtomicReference<String> profileAuthorization = new AtomicReference<>();
+        private final AtomicReference<String> profileCorrelationId = new AtomicReference<>();
         private final AtomicReference<String> jobAuthorization = new AtomicReference<>();
+        private final AtomicReference<String> jobCorrelationId = new AtomicReference<>();
         private final AtomicReference<String> jobUserId = new AtomicReference<>();
         private final AtomicReference<String> jobBody = new AtomicReference<>();
+        private final AtomicLong profileDelayMs = new AtomicLong();
+        private final AtomicBoolean malformedJobResponse = new AtomicBoolean();
         private final List<DownstreamCall> applicationCalls = new CopyOnWriteArrayList<>();
         private final List<DownstreamCall> documentCalls = new CopyOnWriteArrayList<>();
         private final List<DownstreamCall> savedJobCalls = new CopyOnWriteArrayList<>();
@@ -717,6 +786,7 @@ class JobFinderSecurityIntegrationTest {
                     server.createContext("/api/jobs/saved", this::savedJobs);
                     server.createContext("/api/v1/applications", this::applications);
                     server.createContext("/api/v1/documents", this::documents);
+                    server.setExecutor(Executors.newCachedThreadPool());
                     server.start();
                 } catch (IOException exception) {
                     throw new IllegalStateException(
@@ -728,15 +798,24 @@ class JobFinderSecurityIntegrationTest {
 
         private void profile(HttpExchange exchange) throws IOException {
             profileAuthorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            profileCorrelationId.set(
+                    exchange.getRequestHeaders().getFirst("X-Correlation-Id"));
+            delay(profileDelayMs.get());
             respond(exchange, 200, "{}");
         }
 
         private void jobs(HttpExchange exchange) throws IOException {
             jobAuthorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            jobCorrelationId.set(
+                    exchange.getRequestHeaders().getFirst("X-Correlation-Id"));
             jobUserId.set(exchange.getRequestHeaders().getFirst("X-User-Id"));
             jobBody.set(new String(
                     exchange.getRequestBody().readAllBytes(),
                     StandardCharsets.UTF_8));
+            if (malformedJobResponse.get()) {
+                respond(exchange, 200, "{\"jobs\":");
+                return;
+            }
             respond(exchange, 200, """
                     {
                       "jobs": [{
@@ -957,23 +1036,55 @@ class JobFinderSecurityIntegrationTest {
             exchange.close();
         }
 
+        private static void delay(long milliseconds) throws IOException {
+            if (milliseconds < 1) {
+                return;
+            }
+            try {
+                Thread.sleep(milliseconds);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IOException("Downstream test delay interrupted", exception);
+            }
+        }
+
         void reset() {
             profileAuthorization.set(null);
+            profileCorrelationId.set(null);
             jobAuthorization.set(null);
+            jobCorrelationId.set(null);
             jobUserId.set(null);
             jobBody.set(null);
             applicationCalls.clear();
             documentCalls.clear();
             savedJobCalls.clear();
             savedJobCreates.set(0);
+            profileDelayMs.set(0);
+            malformedJobResponse.set(false);
         }
 
         String profileAuthorization() {
             return profileAuthorization.get();
         }
 
+        String profileCorrelationId() {
+            return profileCorrelationId.get();
+        }
+
         String jobAuthorization() {
             return jobAuthorization.get();
+        }
+
+        String jobCorrelationId() {
+            return jobCorrelationId.get();
+        }
+
+        void setProfileDelayMs(long milliseconds) {
+            profileDelayMs.set(milliseconds);
+        }
+
+        void setMalformedJobResponse(boolean malformed) {
+            malformedJobResponse.set(malformed);
         }
 
         String jobUserId() {

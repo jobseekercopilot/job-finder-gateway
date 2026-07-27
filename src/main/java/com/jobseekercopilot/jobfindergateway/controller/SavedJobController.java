@@ -4,7 +4,8 @@ import com.jobseekercopilot.generated.jobservice.model.Job;
 import com.jobseekercopilot.generated.jobservice.model.SavedJobPageResponse;
 import com.jobseekercopilot.generated.jobservice.model.SavedJobResponse;
 import com.jobseekercopilot.jobfindergateway.client.JobServiceClientFactory;
-import com.jobseekercopilot.jobfindergateway.model.dto.SavedJobErrorResponse;
+import com.jobseekercopilot.jobfindergateway.http.DownstreamFailureResponses;
+import com.jobseekercopilot.jobfindergateway.model.dto.ApiErrorResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -93,7 +94,7 @@ public class SavedJobController {
                     content = @Content(
                             mediaType = MediaType.APPLICATION_JSON_VALUE,
                             schema = @Schema(
-                                    implementation = SavedJobErrorResponse.class))),
+                                    implementation = ApiErrorResponse.class))),
             @ApiResponse(
                     responseCode = "401",
                     description = "Missing or invalid access token"),
@@ -103,14 +104,14 @@ public class SavedJobController {
                     content = @Content(
                             mediaType = MediaType.APPLICATION_JSON_VALUE,
                             schema = @Schema(
-                                    implementation = SavedJobErrorResponse.class))),
+                                    implementation = ApiErrorResponse.class))),
             @ApiResponse(
                     responseCode = "503",
                     description = "Job Service unavailable",
                     content = @Content(
                             mediaType = MediaType.APPLICATION_JSON_VALUE,
                             schema = @Schema(
-                                    implementation = SavedJobErrorResponse.class)))
+                                    implementation = ApiErrorResponse.class)))
     })
     public ResponseEntity<?> save(
             @AuthenticationPrincipal Jwt accessToken,
@@ -144,7 +145,7 @@ public class SavedJobController {
                     content = @Content(
                             mediaType = MediaType.APPLICATION_JSON_VALUE,
                             schema = @Schema(
-                                    implementation = SavedJobErrorResponse.class))),
+                                    implementation = ApiErrorResponse.class))),
             @ApiResponse(
                     responseCode = "401",
                     description = "Missing or invalid access token"),
@@ -154,7 +155,7 @@ public class SavedJobController {
                     content = @Content(
                             mediaType = MediaType.APPLICATION_JSON_VALUE,
                             schema = @Schema(
-                                    implementation = SavedJobErrorResponse.class)))
+                                    implementation = ApiErrorResponse.class)))
     })
     public ResponseEntity<?> list(
             @AuthenticationPrincipal Jwt accessToken,
@@ -196,14 +197,14 @@ public class SavedJobController {
                     content = @Content(
                             mediaType = MediaType.APPLICATION_JSON_VALUE,
                             schema = @Schema(
-                                    implementation = SavedJobErrorResponse.class))),
+                                    implementation = ApiErrorResponse.class))),
             @ApiResponse(
                     responseCode = "503",
                     description = "Job Service unavailable",
                     content = @Content(
                             mediaType = MediaType.APPLICATION_JSON_VALUE,
                             schema = @Schema(
-                                    implementation = SavedJobErrorResponse.class)))
+                                    implementation = ApiErrorResponse.class)))
     })
     public ResponseEntity<?> get(
             @AuthenticationPrincipal Jwt accessToken,
@@ -241,7 +242,7 @@ public class SavedJobController {
                     content = @Content(
                             mediaType = MediaType.APPLICATION_JSON_VALUE,
                             schema = @Schema(
-                                    implementation = SavedJobErrorResponse.class)))
+                                    implementation = ApiErrorResponse.class)))
     })
     public ResponseEntity<?> unsave(
             @AuthenticationPrincipal Jwt accessToken,
@@ -306,26 +307,30 @@ public class SavedJobController {
         log.warn(
                 "saved-job request failed category={}",
                 exception.getClass().getSimpleName());
-        return error(
-                HttpStatus.SERVICE_UNAVAILABLE,
-                "SAVED_JOB_SERVICE_UNAVAILABLE",
-                "Saved jobs are currently unavailable.");
+        if (DownstreamFailureResponses.isTimeout(exception)) {
+            return DownstreamFailureResponses.timeout(
+                    "JOB_FINDER_SAVED_JOB_TIMEOUT",
+                    "The saved-job service did not respond in time.");
+        }
+        if (DownstreamFailureResponses.isMalformedResponse(exception)) {
+            return invalidDownstreamResponse();
+        }
+        return DownstreamFailureResponses.unavailable(
+                "JOB_FINDER_SAVED_JOB_UNAVAILABLE",
+                "The saved-job service is currently unavailable.");
     }
 
     private ResponseEntity<?> invalidDownstreamResponse() {
         log.warn("saved-job request failed category=InvalidDownstreamResponse");
-        return error(
-                HttpStatus.BAD_GATEWAY,
-                "INVALID_SAVED_JOB_RESPONSE",
-                "Saved jobs returned an invalid response.");
+        return DownstreamFailureResponses.badGateway(
+                "JOB_FINDER_INVALID_SAVED_JOB_RESPONSE",
+                "The saved-job service returned an invalid response.");
     }
 
-    private ResponseEntity<SavedJobErrorResponse> error(
+    private ResponseEntity<ApiErrorResponse> error(
             HttpStatus status,
             String code,
             String message) {
-        return ResponseEntity.status(status)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(new SavedJobErrorResponse(code, message));
+        return DownstreamFailureResponses.error(status, code, message);
     }
 }

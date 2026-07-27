@@ -26,6 +26,9 @@ The request body may contain:
 - `workPreferences`
 - `homeLocation`
 - `selectedProviders`
+- `page`
+- `pageSize`
+- `sort`
 
 If the body is omitted, Job Finder obtains the authenticated user's profile and
 maps its structured aspirations, work preferences, and location into the Job
@@ -69,6 +72,13 @@ contract. The generated response is returned directly, preserving:
 - provider statuses
 - normalised location and salary fields
 - application and generated-document enrichment
+- bounded aggregate `page`, `pageSize`, `totalResults`, `totalPages` and
+  effective `sort`
+
+Job Finder does not invent paging defaults or reorder results. Omitted paging
+fields remain unset so Job Service applies its documented defaults. Explicit
+values pass through unchanged; Job Service remains the authority for bounds,
+stable ordering, provider fetch budgets and aggregate metadata.
 
 ### Saved jobs
 
@@ -138,8 +148,9 @@ Exact producer contracts and their source revisions are recorded under
 Generator 7.5.0 during `generate-sources`; generated code and JARs are never
 committed.
 
-The Job Service pin currently consumes contract `2.0.0` at producer revision
-`badf3f061732a0bc662722227ee19f877dd463da`. It includes aggregate
+The Job Service pin currently consumes contract `2.1.0` at producer revision
+`2cce83ddc057967b7a20d43c970499bffe0dd31f`. It includes bounded
+aggregate paging/sorting, `totalPages`, aggregate
 `searchStatus`/`matchingStatus`, the stable provider-result taxonomy, healthy
 empty-result semantics, canonical Job schema `2.0` and the owner-scoped
 saved-job resource. Compatibility checks protect search and saved-job response,
@@ -152,6 +163,7 @@ Contract policy checks reject:
 - removal of required search, saved-job or profile operations
 - removal of either downstream Bearer authentication boundary
 - removal of key Job Search request or response boundary fields
+- removal of paging/sort fields or the reviewed sort modes
 - removal of saved-job identity, version, digest, source-state or canonical
   snapshot fields
 

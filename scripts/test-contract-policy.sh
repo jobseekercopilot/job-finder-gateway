@@ -62,6 +62,18 @@ if "$repository_root/scripts/verify-contracts.sh" "$temporary_dir/job-boundary" 
     exit 1
 fi
 
+copy_contracts "$temporary_dir/job-paging"
+sed 's/^        sort:$/        removedSort:/' \
+    "$temporary_dir/job-paging/job-service.yaml" \
+    > "$temporary_dir/job-paging/changed.yaml"
+mv "$temporary_dir/job-paging/changed.yaml" \
+    "$temporary_dir/job-paging/job-service.yaml"
+(cd "$temporary_dir/job-paging" && sha256sum job-service.yaml user-profile-service.json > SHA256SUMS)
+if "$repository_root/scripts/verify-contracts.sh" "$temporary_dir/job-paging" >/dev/null 2>&1; then
+    echo "contract policy negative test accepted removal of the paging sort boundary" >&2
+    exit 1
+fi
+
 copy_contracts "$temporary_dir/job-result-state"
 sed 's/^        searchStatus:$/        removedSearchStatus:/' \
     "$temporary_dir/job-result-state/job-service.yaml" \

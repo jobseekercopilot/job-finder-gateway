@@ -41,8 +41,10 @@ Service, and maps its response. It does not call providers directly.
 - The validated Bearer token is forwarded by a separate per-request generated
   client to Job Service; mutable token state is not shared and the
   browser-supplied identity header is never relayed.
-- The pinned Job Service 2.0.0 contract now supplies generated save, list,
-  retrieve and unsave operations. Job Finder preserves the server-owned
+- The pinned Job Service 2.1.0 contract supplies bounded aggregate paging,
+  deterministic sorting, generated save, list, retrieve and unsave operations.
+  Job Finder passes paging/sort requests and metadata through without inventing
+  client-side semantics, and preserves the server-owned
   `savedJobId`, immutable snapshot identity/version/digest and save outcome
   while redacting saved-job IDs from request logs.
 - Saved-job integration tests cover authentication, caller identity-header

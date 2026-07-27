@@ -15,7 +15,7 @@ info:
   license:
     name: Proprietary source-available
   title: Jobseeker Copilot - Job Service API
-  version: 2.0.0
+  version: 2.1.0
 servers:
 - description: Generated server url
   url: http://localhost:8086
@@ -348,6 +348,9 @@ components:
         selectedProviders:
         - REED
         - ADZUNA
+        page: 1
+        pageSize: 10
+        sort: MOST_RELEVANT
       properties:
         aspirations:
           $ref: "#/components/schemas/Aspirations"
@@ -360,6 +363,34 @@ components:
           items:
             type: string
           type: array
+        page:
+          default: 1
+          description: One-based aggregate result page.
+          example: 1
+          format: int32
+          maximum: 100
+          minimum: 1
+          type: integer
+        pageSize:
+          default: 10
+          description: Maximum aggregate results returned on one page.
+          example: 10
+          format: int32
+          maximum: 50
+          minimum: 1
+          type: integer
+        sort:
+          default: MOST_RELEVANT
+          description: Stable aggregate result order.
+          enum:
+          - MOST_RELEVANT
+          - CLOSEST
+          - HIGHEST_SALARY
+          - NEWEST_POSTED
+          - OLDEST_POSTED
+          - COMPANY_AZ
+          - JOB_TITLE_AZ
+          type: string
       required:
       - aspirations
       type: object
@@ -935,6 +966,8 @@ components:
         totalResults: 5
         page: 5
         pageSize: 2
+        totalPages: 3
+        sort: MOST_RELEVANT
       properties:
         jobs:
           items:
@@ -945,14 +978,37 @@ components:
             $ref: "#/components/schemas/TargetRoleJobResults"
           type: array
         totalResults:
+          description: Number of role/job rows in the bounded aggregate window before paging.
           format: int32
           type: integer
         page:
+          description: One-based page returned.
           format: int32
+          maximum: 100
+          minimum: 1
           type: integer
         pageSize:
+          description: Maximum jobs returned on this page.
           format: int32
+          maximum: 50
+          minimum: 1
           type: integer
+        totalPages:
+          description: Pages available in the bounded aggregate window.
+          format: int32
+          minimum: 0
+          type: integer
+        sort:
+          description: Stable aggregate result order applied by Job Service.
+          enum:
+          - MOST_RELEVANT
+          - CLOSEST
+          - HIGHEST_SALARY
+          - NEWEST_POSTED
+          - OLDEST_POSTED
+          - COMPANY_AZ
+          - JOB_TITLE_AZ
+          type: string
         providerResults:
           items:
             $ref: "#/components/schemas/ProviderResultStatus"
@@ -978,6 +1034,8 @@ components:
       - totalResults
       - page
       - pageSize
+      - totalPages
+      - sort
       - providerResults
       - searchStatus
       - matchingStatus

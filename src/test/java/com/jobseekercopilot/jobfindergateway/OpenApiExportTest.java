@@ -31,8 +31,32 @@ class OpenApiExportTest {
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at("/security/0/bearerAuth").isArray());
         org.junit.jupiter.api.Assertions.assertEquals(
-                "1.2.0",
+                "1.3.0",
                 contract.at("/info/version").asText());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                1,
+                contract.at(
+                        "/components/schemas/JobSearchRequest/properties/page/minimum")
+                        .asInt());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                50,
+                contract.at(
+                        "/components/schemas/JobSearchRequest/properties/pageSize/maximum")
+                        .asInt());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "JOB_TITLE_AZ",
+                contract.at(
+                        "/components/schemas/JobSearchRequest/properties/sort/enum/6")
+                        .asText());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at(
+                        "/components/schemas/ReedJobSearchResponse/properties/totalPages")
+                        .isObject());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "MOST_RELEVANT",
+                contract.at(
+                        "/components/schemas/ReedJobSearchResponse/properties/sort/enum/0")
+                        .asText());
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at("/paths/~1api~1jobs~1saved/post").isObject());
         org.junit.jupiter.api.Assertions.assertTrue(

@@ -31,7 +31,7 @@ class OpenApiExportTest {
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at("/security/0/bearerAuth").isArray());
         org.junit.jupiter.api.Assertions.assertEquals(
-                "1.5.0",
+                "1.6.0",
                 contract.at("/info/version").asText());
         org.junit.jupiter.api.Assertions.assertEquals(
                 1,
@@ -128,6 +128,18 @@ class OpenApiExportTest {
                 contract.at(
                         "/components/schemas/CreateTrackedApplicationRequest/properties/userId")
                         .isMissingNode());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at("/components/schemas/CreateTrackedApplicationRequest/properties/listingUrl").isObject());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at("/components/schemas/CreateTrackedApplicationRequest/properties/attributionSourceUrl").isObject());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at("/components/schemas/CreateTrackedApplicationRequest/properties/disclaimer").isObject());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at("/components/schemas/ApplicationRecordResponse/properties/listingUrl").isObject());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at("/components/schemas/ApplicationRecordResponse/properties/canonicalJobId").isObject());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at("/components/schemas/ApplicationRecordResponse/properties/disclaimer").isObject());
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at("/components/schemas/SavedJobResponse/properties/savedJobId")
                         .isObject());

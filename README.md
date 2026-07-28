@@ -43,7 +43,7 @@ Job Finder also creates a request-scoped generated Job Service client and
 forwards the original Bearer token; it never relays a caller-supplied identity
 header. Job Service independently verifies the token and derives search
 identity from its subject.
-The browser-facing API 1.5 validates bounded search criteria and caps request
+The browser-facing API 1.6 validates bounded search criteria and caps request
 bodies before any downstream call. It passes valid Job Service API 2.1 `page`,
 `pageSize` and `sort` through unchanged and returns its bounded aggregate
 `totalPages` and effective sort metadata. Invalid, malformed and oversized
@@ -61,6 +61,10 @@ Values outside 1–60,000 ms fail application startup. Timeout responses use
 `503`. Automatic transport retries are disabled so the gateway never repeats
 an unsafe call and never hides retry time outside the request budget. All
 failures use the same safe versioned error schema and correlation ID.
+Application create and read operations preserve canonical identity together
+with authoritative listing, official application and attribution metadata.
+Application Tracker independently validates NHS source metadata before it is
+stored.
 
 The same boundary provides `POST/GET /api/jobs/saved` and
 `GET/DELETE /api/jobs/saved/{savedJobId}`. Job Service remains the authority

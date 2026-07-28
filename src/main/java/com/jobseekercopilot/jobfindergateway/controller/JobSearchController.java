@@ -246,6 +246,12 @@ public class JobSearchController {
         trackerRequest.put("canonicalJobId", request.canonicalJobId());
         trackerRequest.put("provider", request.provider());
         trackerRequest.put("externalJobId", request.externalJobId());
+        trackerRequest.put("listingUrl", request.listingUrl());
+        trackerRequest.put("applyUrl", request.applyUrl());
+        trackerRequest.put("attributionLabel", request.attributionLabel());
+        trackerRequest.put("attributionSourceUrl", request.attributionSourceUrl());
+        trackerRequest.put("licenceUrl", request.licenceUrl());
+        trackerRequest.put("disclaimer", request.disclaimer());
         trackerRequest.put("jobTitle", request.jobTitle());
         trackerRequest.put("companyName", request.companyName());
         if (request.location() != null && !request.location().isBlank()) {

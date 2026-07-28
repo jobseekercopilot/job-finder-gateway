@@ -18,6 +18,18 @@ public record CreateTrackedApplicationRequest(
         @NotBlank
         @Size(max = 255)
         String externalJobId,
+        @Size(max = 2048)
+        String listingUrl,
+        @Size(max = 2048)
+        String applyUrl,
+        @Size(max = 255)
+        String attributionLabel,
+        @Size(max = 2048)
+        String attributionSourceUrl,
+        @Size(max = 2048)
+        String licenceUrl,
+        @Size(max = 1000)
+        String disclaimer,
         @NotBlank
         @Size(max = 300)
         String jobTitle,

@@ -623,12 +623,18 @@ class JobFinderSecurityIntegrationTest {
                 new HttpEntity<>("""
                         {
                           "userId": "victim",
-                          "jobId": "canonical-1",
-                          "canonicalJobId": "canonical-1",
-                          "provider": "REED",
-                          "externalJobId": "reed-1",
-                          "jobTitle": "Platform Engineer",
-                          "companyName": "Example Ltd",
+                          "jobId": "canonical-nhs-c123",
+                          "canonicalJobId": "canonical-nhs-c123",
+                          "provider": "NHS_JOBS",
+                          "externalJobId": "C123",
+                          "listingUrl": "https://www.jobs.nhs.uk/candidate/jobadvert/C123",
+                          "applyUrl": "https://www.jobs.nhs.uk/candidate/jobadvert/C123",
+                          "attributionLabel": "Vacancy source: NHS Jobs",
+                          "attributionSourceUrl": "https://www.jobs.nhs.uk/",
+                          "licenceUrl": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+                          "disclaimer": "NHS Jobs does not endorse Job Seeker Copilot.",
+                          "jobTitle": "Community Staff Nurse",
+                          "companyName": "Example NHS Trust",
                           "location": "London"
                         }
                         """, headers),
@@ -653,6 +659,15 @@ class JobFinderSecurityIntegrationTest {
         assertEquals("alice", forwarded.get("userId").asText());
         assertEquals("MANUAL", forwarded.get("provenance").asText());
         assertEquals("APPLIED", forwarded.get("initialStatus").asText());
+        assertEquals("canonical-nhs-c123", forwarded.get("canonicalJobId").asText());
+        assertEquals("NHS_JOBS", forwarded.get("provider").asText());
+        assertEquals("C123", forwarded.get("externalJobId").asText());
+        assertEquals("https://www.jobs.nhs.uk/candidate/jobadvert/C123", forwarded.get("listingUrl").asText());
+        assertEquals("https://www.jobs.nhs.uk/candidate/jobadvert/C123", forwarded.get("applyUrl").asText());
+        assertEquals("Vacancy source: NHS Jobs", forwarded.get("attributionLabel").asText());
+        assertEquals("https://www.jobs.nhs.uk/", forwarded.get("attributionSourceUrl").asText());
+        assertEquals("https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/", forwarded.get("licenceUrl").asText());
+        assertEquals("NHS Jobs does not endorse Job Seeker Copilot.", forwarded.get("disclaimer").asText());
         assertNull(createCall.userId());
         assertTrue(DOWNSTREAM.applicationCalls().stream().allMatch(call ->
                 call.authorization().equals("Bearer " + token)));

@@ -120,7 +120,7 @@ class JobFinderSecurityIntegrationTest {
                     "latitude": 51.501,
                     "longitude": -0.142
                   },
-                  "selectedProviders": ["REED", "ADZUNA"],
+                  "selectedProviders": ["REED", "NHS_JOBS"],
                   "page": 2,
                   "pageSize": 20,
                   "sort": "NEWEST_POSTED"
@@ -134,7 +134,7 @@ class JobFinderSecurityIntegrationTest {
         JsonNode forwarded = objectMapper.readTree(DOWNSTREAM.jobBody());
         assertEquals("SW1A 1AA", forwarded.at("/homeLocation/postcode").asText());
         assertEquals("REED", forwarded.at("/selectedProviders/0").asText());
-        assertEquals("ADZUNA", forwarded.at("/selectedProviders/1").asText());
+        assertEquals("NHS_JOBS", forwarded.at("/selectedProviders/1").asText());
         assertEquals(2, forwarded.at("/page").asInt());
         assertEquals(20, forwarded.at("/pageSize").asInt());
         assertEquals("NEWEST_POSTED", forwarded.at("/sort").asText());
@@ -150,6 +150,18 @@ class JobFinderSecurityIntegrationTest {
         assertEquals(
                 "NOT_RUN",
                 objectMapper.valueToTree(response.getBody()).at("/matchingStatus").asText());
+        assertEquals(
+                "Vacancy source: NHS Jobs",
+                objectMapper.valueToTree(response.getBody())
+                        .at("/jobs/0/sources/0/attributionLabel").asText());
+        assertEquals(
+                "https://www.jobs.nhs.uk/",
+                objectMapper.valueToTree(response.getBody())
+                        .at("/jobs/0/sources/0/attributionSourceUrl").asText());
+        assertEquals(
+                "NHS Jobs does not endorse Job Seeker Copilot.",
+                objectMapper.valueToTree(response.getBody())
+                        .at("/jobs/0/sources/0/disclaimer").asText());
         assertEquals(
                 "2.0",
                 objectMapper.valueToTree(response.getBody()).at("/jobs/0/canonicalSchemaVersion").asText());
@@ -868,13 +880,25 @@ class JobFinderSecurityIntegrationTest {
                       "jobs": [{
                         "canonicalSchemaVersion": "2.0",
                         "canonicalJobId": "canonical-1",
-                        "primarySource": "REED",
-                        "externalJobId": "reed-1",
-                        "title": "Platform Engineer",
+                        "primarySource": "NHS_JOBS",
+                        "externalJobId": "C9855-FIXTURE-001",
+                        "title": "Community Staff Nurse",
+                        "salaryText": "£31,049 to £37,796 a year",
                         "employmentTypeCode": "UNKNOWN",
                         "contractTypeCode": "UNKNOWN",
                         "workplaceType": "UNKNOWN",
-                        "sources": [],
+                        "sources": [{
+                          "integrationProvider": "NHS_JOBS",
+                          "provider": "NHS_JOBS",
+                          "sourceType": "JOB_BOARD",
+                          "externalJobId": "C9855-FIXTURE-001",
+                          "listingUrl": "https://fixtures.jobseekercopilot.test/nhs-jobs/jobadvert/C9855-FIXTURE-001",
+                          "applyUrl": "https://fixtures.jobseekercopilot.test/nhs-jobs/jobadvert/C9855-FIXTURE-001",
+                          "attributionLabel": "Vacancy source: NHS Jobs",
+                          "attributionSourceUrl": "https://www.jobs.nhs.uk/",
+                          "licenceUrl": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+                          "disclaimer": "NHS Jobs does not endorse Job Seeker Copilot."
+                        }],
                         "skills": [],
                         "experience": {
                           "level": "UNKNOWN",
@@ -889,7 +913,7 @@ class JobFinderSecurityIntegrationTest {
                       "totalPages": 5,
                       "sort": "NEWEST_POSTED",
                       "providerResults": [{
-                        "provider": "REED",
+                        "provider": "NHS_JOBS",
                         "status": "SUCCESS",
                         "rawResultCount": 1
                       }],

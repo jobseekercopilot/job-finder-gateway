@@ -52,10 +52,15 @@ class OpenApiExportTest {
                 "aspirations",
                 contract.at("/components/schemas/JobSearchRequest/required/0").asText());
         org.junit.jupiter.api.Assertions.assertEquals(
-                3,
+                4,
                 contract.at(
                         "/components/schemas/JobSearchRequest/properties/selectedProviders/maxItems")
                         .asInt());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at(
+                                "/components/schemas/JobSearchRequest/properties/selectedProviders/items/pattern")
+                        .asText()
+                        .contains("NHS_JOBS"));
         org.junit.jupiter.api.Assertions.assertEquals(
                 1,
                 contract.at(

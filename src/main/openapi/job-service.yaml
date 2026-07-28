@@ -521,6 +521,9 @@ components:
           $ref: "#/components/schemas/CanonicalLocation"
         salary:
           $ref: "#/components/schemas/JobSalary"
+        salaryText:
+          description: Provider-supplied salary display text retained when a numeric range is unavailable.
+          type: string
         employmentType:
           description: Raw or legacy provider employment value retained without loss.
           type: string
@@ -693,7 +696,7 @@ components:
           type: boolean
         providerPostedAt:
           deprecated: true
-          description: Legacy timezone-less value retained for compatibility.
+          description: Legacy value retained for compatibility and normalised to an offset timestamp.
           format: date-time
           type: string
         providerPostedAtRaw:
@@ -708,6 +711,22 @@ components:
           type: string
         retrievedAtUtc:
           format: date-time
+          type: string
+        attributionLabel:
+          description: Provider-approved attribution label shown with this source.
+          type: string
+        attributionSourceUrl:
+          description: Validated HTTP(S) provider home or attribution URL.
+          format: uri
+          pattern: "^https?://"
+          type: string
+        licenceUrl:
+          description: Validated HTTP(S) licence URL supplied by the provider gateway.
+          format: uri
+          pattern: "^https?://"
+          type: string
+        disclaimer:
+          description: Provider relationship disclaimer shown without implying endorsement.
           type: string
       required:
       - integrationProvider

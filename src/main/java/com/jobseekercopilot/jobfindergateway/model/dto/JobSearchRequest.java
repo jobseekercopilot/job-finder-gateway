@@ -27,11 +27,11 @@ public class JobSearchRequest {
     @Valid
     private HomeLocation homeLocation;
 
-    @Size(max = 3, message = "selectedProviders cannot contain more than 3 values")
+    @Size(max = 4, message = "selectedProviders cannot contain more than 4 values")
     private List<
             @NotBlank(message = "selectedProviders cannot contain blank values")
             @Pattern(
-                    regexp = "(?i)\\s*(REED|ADZUNA|JSEARCH)\\s*",
+                    regexp = "(?i)\\s*(REED|ADZUNA|JSEARCH|NHS_JOBS)\\s*",
                     message = "selectedProviders contains an unsupported provider")
             String> selectedProviders;
 

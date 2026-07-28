@@ -22,9 +22,9 @@ done
 
 test "$(wc -l < "$job_source" | tr -d ' ')" = 4
 grep -Fx 'repository=jobseekercopilot/job-service' "$job_source" >/dev/null
-grep -Fx 'revision=2cce83ddc057967b7a20d43c970499bffe0dd31f' "$job_source" >/dev/null
+grep -Fx 'revision=6e5e6f10dcba83b53b56eda464e747267305047f' "$job_source" >/dev/null
 grep -Fx 'path=api/openapi.yaml' "$job_source" >/dev/null
-grep -Fx 'sha256=3d3af14c64393df44b605226bb5950bc442ed901f43f12418f65a7b5d80408ce' "$job_source" >/dev/null
+grep -Fx 'sha256=28c16fdb7a6cc44c6f88051f83a130a769fe9e7a9aeb8709bd2b4d046e3e0813' "$job_source" >/dev/null
 
 test "$(wc -l < "$profile_source" | tr -d ' ')" = 4
 grep -Fx 'repository=jobseekercopilot/user-profile-service' "$profile_source" >/dev/null
@@ -66,6 +66,11 @@ for required_field in \
     skills \
     experience \
     fieldProvenance \
+    salaryText \
+    attributionLabel \
+    attributionSourceUrl \
+    licenceUrl \
+    disclaimer \
     savedJobId \
     snapshotVersion \
     contentVersion \

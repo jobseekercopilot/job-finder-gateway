@@ -590,6 +590,16 @@ class JobFinderSecurityIntegrationTest {
                 objectMapper.valueToTree(response.getBody())
                         .at("/0/cvDocumentReference/evidenceProvenance/evidenceSnapshotId")
                         .asText());
+        assertEquals(
+                "QUALIFICATION_TRAINING",
+                objectMapper.valueToTree(response.getBody())
+                        .at("/0/cvDocumentReference/evidenceProvenance/evidenceRevisions/0/category")
+                        .asText());
+        assertEquals(
+                "PROJECT",
+                objectMapper.valueToTree(response.getBody())
+                        .at("/0/cvDocumentReference/evidenceProvenance/evidenceRevisions/1/category")
+                        .asText());
         assertTrue(DOWNSTREAM.applicationCalls().stream().anyMatch(call ->
                 call.method().equals("GET")
                         && call.path().equals("/api/v1/applications/user/alice")
@@ -1080,10 +1090,16 @@ class JobFinderSecurityIntegrationTest {
                             "entryId": "55555555-5555-4555-8555-555555555555",
                             "revisionId": "66666666-6666-4666-8666-666666666666",
                             "revisionNumber": 2,
-                            "category": "PROJECTS",
+                            "category": "QUALIFICATION_TRAINING",
                             "contentDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+                          }, {
+                            "entryId": "88888888-8888-4888-8888-888888888888",
+                            "revisionId": "99999999-9999-4999-8999-999999999999",
+                            "revisionNumber": 1,
+                            "category": "PROJECT",
+                            "contentDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
                           }],
-                          "sectionOrder": ["PROJECTS"],
+                          "sectionOrder": ["QUALIFICATION_TRAINING", "PROJECT"],
                           "claimLedger": {
                             "ledgerId": "77777777-7777-4777-8777-777777777777",
                             "ledgerSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",

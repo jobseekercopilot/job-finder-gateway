@@ -52,7 +52,7 @@ Invalid, malformed and oversized requests use a stable versioned error with
 safe correlation metadata.
 
 Every downstream call has a finite connection-pool, connection, and response
-timeout. The defaults are 250 ms, 500 ms, and 2,500 ms respectively, configured
+timeout. The defaults are 250 ms, 500 ms, and 4,000 ms respectively, configured
 with `JOB_FINDER_CONNECTION_REQUEST_TIMEOUT_MS`,
 `JOB_FINDER_CONNECT_TIMEOUT_MS`, and `JOB_FINDER_RESPONSE_TIMEOUT_MS`. All
 downstream work for one browser request also shares a four-second monotonic

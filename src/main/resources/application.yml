@@ -17,7 +17,7 @@ job-finder:
   downstream:
     connect-timeout-ms: ${JOB_FINDER_CONNECT_TIMEOUT_MS:500}
     connection-request-timeout-ms: ${JOB_FINDER_CONNECTION_REQUEST_TIMEOUT_MS:250}
-    response-timeout-ms: ${JOB_FINDER_RESPONSE_TIMEOUT_MS:2500}
+    response-timeout-ms: ${JOB_FINDER_RESPONSE_TIMEOUT_MS:4000}
     request-deadline-ms: ${JOB_FINDER_REQUEST_DEADLINE_MS:4000}
   security:
     jwk-set-uri: ${AUTH_JWKS_URI:http://authentication-service:8084/.well-known/jwks.json}

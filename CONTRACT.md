@@ -41,7 +41,7 @@ streamed or chunked requests without a trusted `Content-Length`. The limit is
 configured by `JOB_FINDER_MAX_SEARCH_REQUEST_BYTES`; startup fails unless it is
 between 1,024 and 262,144 bytes.
 
-The browser-facing API 1.4 applies these limits before calling a downstream:
+The browser-facing API 1.7 applies these limits before calling a downstream:
 
 | Field | Limit |
 | --- | --- |
@@ -99,17 +99,19 @@ The request is converted into the model generated from the pinned Job Service
 contract. The generated response is returned directly, preserving:
 
 - canonical and provider job identity
-- per-target-role results
+- per-target-role jobs, paging totals, provider outcomes, search status and
+  matching status
 - provider statuses
 - normalised location and salary fields
 - application and generated-document enrichment
-- bounded aggregate `page`, `pageSize`, `totalResults`, `totalPages` and
-  effective `sort`
+- bounded aggregate compatibility `page`, `pageSize`, `totalResults`,
+  `totalPages` and effective `sort`
 
 Job Finder does not invent paging defaults or reorder results. Omitted paging
 fields remain unset so Job Service applies its documented defaults. Explicit
 values pass through unchanged; Job Service remains the authority for bounds,
-stable ordering, provider fetch budgets and aggregate metadata.
+stable ordering, provider fetch budgets, per-target-role paging and aggregate
+compatibility metadata.
 
 ### Saved jobs
 
@@ -179,10 +181,11 @@ Exact producer contracts and their source revisions are recorded under
 Generator 7.5.0 during `generate-sources`; generated code and JARs are never
 committed.
 
-The Job Service pin currently consumes contract `2.1.0` at producer revision
-`2cce83ddc057967b7a20d43c970499bffe0dd31f`. It includes bounded
-aggregate paging/sorting, `totalPages`, aggregate
-`searchStatus`/`matchingStatus`, the stable provider-result taxonomy, healthy
+The Job Service pin currently consumes contract `2.2.0` at producer revision
+`781017eeb63aaf046d3d3c3cb6f962128d439d1a`. It includes independently
+paged target-role results with role-specific totals, provider outcomes,
+`searchStatus` and `matchingStatus`, plus bounded aggregate compatibility
+paging/sorting. It retains the stable provider-result taxonomy, healthy
 empty-result semantics, canonical Job schema `2.0` and the owner-scoped
 saved-job resource. Compatibility checks protect search and saved-job response,
 request and identity boundaries.
@@ -194,7 +197,8 @@ Contract policy checks reject:
 - removal of required search, saved-job or profile operations
 - removal of either downstream Bearer authentication boundary
 - removal of key Job Search request or response boundary fields
-- removal of paging/sort fields or the reviewed sort modes
+- removal of paging/sort fields, independently required target-role result
+  metadata or the reviewed sort modes
 - removal of saved-job identity, version, digest, source-state or canonical
   snapshot fields
 
@@ -203,7 +207,7 @@ Contract policy checks reject:
 - Missing or invalid authentication returns a stable, redacted `401` response
   with a correlation ID.
 - An incomplete profile, invalid search request or malformed JSON returns the
-  stable API 1.4 error schema with `400`; a body over the configured byte limit
+  stable API 1.7 error schema with `400`; a body over the configured byte limit
   uses the same schema with `413`.
 - An invalid saved-job request returns a stable `400`; missing and foreign
   saved-job IDs return the same stable `404`.

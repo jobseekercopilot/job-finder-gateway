@@ -151,6 +151,51 @@ class JobFinderSecurityIntegrationTest {
                 "NOT_RUN",
                 objectMapper.valueToTree(response.getBody()).at("/matchingStatus").asText());
         assertEquals(
+                "Platform Engineer",
+                objectMapper.valueToTree(response.getBody())
+                        .at("/resultsByTargetRole/0/targetRole")
+                        .asText());
+        assertEquals(
+                "canonical-1",
+                objectMapper.valueToTree(response.getBody())
+                        .at("/resultsByTargetRole/0/jobs/0/canonicalJobId")
+                        .asText());
+        assertEquals(
+                37,
+                objectMapper.valueToTree(response.getBody())
+                        .at("/resultsByTargetRole/0/totalResults")
+                        .asInt());
+        assertEquals(
+                2,
+                objectMapper.valueToTree(response.getBody())
+                        .at("/resultsByTargetRole/0/page")
+                        .asInt());
+        assertEquals(
+                20,
+                objectMapper.valueToTree(response.getBody())
+                        .at("/resultsByTargetRole/0/pageSize")
+                        .asInt());
+        assertEquals(
+                2,
+                objectMapper.valueToTree(response.getBody())
+                        .at("/resultsByTargetRole/0/totalPages")
+                        .asInt());
+        assertEquals(
+                "TIMED_OUT",
+                objectMapper.valueToTree(response.getBody())
+                        .at("/resultsByTargetRole/0/providerResults/1/status")
+                        .asText());
+        assertEquals(
+                "PARTIAL",
+                objectMapper.valueToTree(response.getBody())
+                        .at("/resultsByTargetRole/0/searchStatus")
+                        .asText());
+        assertEquals(
+                "COMPLETE",
+                objectMapper.valueToTree(response.getBody())
+                        .at("/resultsByTargetRole/0/matchingStatus")
+                        .asText());
+        assertEquals(
                 "2.0",
                 objectMapper.valueToTree(response.getBody()).at("/jobs/0/canonicalSchemaVersion").asText());
         assertEquals(
@@ -197,6 +242,12 @@ class JobFinderSecurityIntegrationTest {
                 """,
                 """
                 {"aspirations":{"desiredRoles":["Engineer"],"locations":["London"]},"page":0}
+                """,
+                """
+                {"aspirations":{"desiredRoles":["Engineer"],"locations":["London"]},"page":101}
+                """,
+                """
+                {"aspirations":{"desiredRoles":["Engineer"],"locations":["London"]},"pageSize":0}
                 """,
                 """
                 {"aspirations":{"desiredRoles":["Engineer"],"locations":["London"]},"pageSize":51}
@@ -911,7 +962,42 @@ class JobFinderSecurityIntegrationTest {
                         },
                         "fieldProvenance": []
                       }],
-                      "resultsByTargetRole": [],
+                      "resultsByTargetRole": [{
+                        "targetRole": "Platform Engineer",
+                        "jobs": [{
+                          "canonicalSchemaVersion": "2.0",
+                          "canonicalJobId": "canonical-1",
+                          "primarySource": "REED",
+                          "externalJobId": "reed-1",
+                          "title": "Platform Engineer",
+                          "employmentTypeCode": "UNKNOWN",
+                          "contractTypeCode": "UNKNOWN",
+                          "workplaceType": "UNKNOWN",
+                          "sources": [],
+                          "skills": [],
+                          "experience": {
+                            "level": "UNKNOWN",
+                            "normalisationStatus": "NOT_PROVIDED"
+                          },
+                          "fieldProvenance": []
+                        }],
+                        "totalResults": 37,
+                        "page": 2,
+                        "pageSize": 20,
+                        "totalPages": 2,
+                        "providerResults": [{
+                          "provider": "REED",
+                          "status": "SUCCESS",
+                          "rawResultCount": 20
+                        }, {
+                          "provider": "ADZUNA",
+                          "status": "TIMED_OUT",
+                          "rawResultCount": 0,
+                          "errorMessage": "Provider request timed out"
+                        }],
+                        "searchStatus": "PARTIAL",
+                        "matchingStatus": "COMPLETE"
+                      }],
                       "totalResults": 1,
                       "page": 2,
                       "pageSize": 20,

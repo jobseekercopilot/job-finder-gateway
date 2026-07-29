@@ -74,6 +74,25 @@ if "$repository_root/scripts/verify-contracts.sh" "$temporary_dir/job-paging" >/
     exit 1
 fi
 
+copy_contracts "$temporary_dir/target-role-paging"
+awk '
+    $0 == "    TargetRoleJobResults:" { in_target_role = 1 }
+    in_target_role && $0 == "        totalResults:" {
+        print "        removedTotalResults:"
+        in_target_role = 0
+        next
+    }
+    { print }
+' "$temporary_dir/target-role-paging/job-service.yaml" \
+    > "$temporary_dir/target-role-paging/changed.yaml"
+mv "$temporary_dir/target-role-paging/changed.yaml" \
+    "$temporary_dir/target-role-paging/job-service.yaml"
+(cd "$temporary_dir/target-role-paging" && sha256sum job-service.yaml user-profile-service.json > SHA256SUMS)
+if "$repository_root/scripts/verify-contracts.sh" "$temporary_dir/target-role-paging" >/dev/null 2>&1; then
+    echo "contract policy negative test accepted removal of target-role paging metadata" >&2
+    exit 1
+fi
+
 copy_contracts "$temporary_dir/job-result-state"
 sed 's/^        searchStatus:$/        removedSearchStatus:/' \
     "$temporary_dir/job-result-state/job-service.yaml" \

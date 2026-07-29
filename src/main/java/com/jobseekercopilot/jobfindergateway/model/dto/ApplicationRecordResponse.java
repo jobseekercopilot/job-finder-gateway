@@ -17,6 +17,12 @@ public record ApplicationRecordResponse(
         String location,
         String cvDocumentId,
         String coverLetterDocumentId,
+        DocumentVersionReference cvDocumentReference,
+        DocumentVersionReference coverLetterDocumentReference,
+        DocumentVersionReference applicationUsedCvDocumentReference,
+        DocumentVersionReference
+                applicationUsedCoverLetterDocumentReference,
+        LocalDateTime applicationUsedAt,
         String status,
         LocalDateTime createdAt,
         LocalDateTime updatedAt,

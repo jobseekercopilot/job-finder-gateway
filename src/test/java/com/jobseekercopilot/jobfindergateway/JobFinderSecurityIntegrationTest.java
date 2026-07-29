@@ -580,6 +580,16 @@ class JobFinderSecurityIntegrationTest {
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertEquals(1, response.getBody().size());
         assertEquals("alice", ((Map<?, ?>) response.getBody().get(0)).get("userId"));
+        assertEquals(
+                "33333333-3333-4333-8333-333333333333",
+                objectMapper.valueToTree(response.getBody())
+                        .at("/0/cvDocumentReference/evidenceProvenance/profileRevisionId")
+                        .asText());
+        assertEquals(
+                "44444444-4444-4444-8444-444444444444",
+                objectMapper.valueToTree(response.getBody())
+                        .at("/0/cvDocumentReference/evidenceProvenance/evidenceSnapshotId")
+                        .asText());
         assertTrue(DOWNSTREAM.applicationCalls().stream().anyMatch(call ->
                 call.method().equals("GET")
                         && call.path().equals("/api/v1/applications/user/alice")
@@ -1053,6 +1063,36 @@ class JobFinderSecurityIntegrationTest {
                       "location": "London",
                       "cvDocumentId": "00000000-0000-0000-0000-000000000011",
                       "coverLetterDocumentId": "00000000-0000-0000-0000-000000000012",
+                      "cvDocumentReference": {
+                        "documentId": "00000000-0000-0000-0000-000000000011",
+                        "documentFamilyId": "10000000-0000-4000-8000-000000000011",
+                        "jobId": "canonical-1",
+                        "documentType": "CV",
+                        "version": 1,
+                        "contentSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                        "groundingState": "AI_GENERATED_EVIDENCE_VALIDATED",
+                        "evidenceProvenance": {
+                          "profileRevisionId": "33333333-3333-4333-8333-333333333333",
+                          "profileContentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                          "evidenceSnapshotId": "44444444-4444-4444-8444-444444444444",
+                          "evidenceSnapshotDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                          "evidenceRevisions": [{
+                            "entryId": "55555555-5555-4555-8555-555555555555",
+                            "revisionId": "66666666-6666-4666-8666-666666666666",
+                            "revisionNumber": 2,
+                            "category": "PROJECTS",
+                            "contentDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+                          }],
+                          "sectionOrder": ["PROJECTS"],
+                          "claimLedger": {
+                            "ledgerId": "77777777-7777-4777-8777-777777777777",
+                            "ledgerSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                            "policyVersion": "2.0.0",
+                            "parserVersion": "3.0.0"
+                          },
+                          "generatedAt": "2026-07-29T03:00:00Z"
+                        }
+                      },
                       "status": "%s"
                     }
                     """.formatted(id, owner, status);

@@ -10,8 +10,10 @@ public record ApplicationRecordResponse(
         UUID id,
         String userId,
         String jobId,
+        String canonicalJobId,
         String provider,
         String externalJobId,
+        String provenance,
         String jobTitle,
         String companyName,
         String location,
@@ -26,6 +28,7 @@ public record ApplicationRecordResponse(
         String status,
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
-        LocalDateTime appliedAt
+        LocalDateTime appliedAt,
+        long version
 ) {
 }

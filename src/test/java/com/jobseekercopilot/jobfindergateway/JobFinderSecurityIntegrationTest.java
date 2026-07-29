@@ -581,6 +581,15 @@ class JobFinderSecurityIntegrationTest {
         assertEquals(1, response.getBody().size());
         assertEquals("alice", ((Map<?, ?>) response.getBody().get(0)).get("userId"));
         assertEquals(
+                "canonical-1",
+                ((Map<?, ?>) response.getBody().get(0)).get("canonicalJobId"));
+        assertEquals(
+                "GENERATED",
+                ((Map<?, ?>) response.getBody().get(0)).get("provenance"));
+        assertEquals(
+                2,
+                ((Number) ((Map<?, ?>) response.getBody().get(0)).get("version")).intValue());
+        assertEquals(
                 "33333333-3333-4333-8333-333333333333",
                 objectMapper.valueToTree(response.getBody())
                         .at("/0/cvDocumentReference/evidenceProvenance/profileRevisionId")
@@ -660,7 +669,7 @@ class JobFinderSecurityIntegrationTest {
         JsonNode forwarded = objectMapper.readTree(createCall.body());
         assertEquals("alice", forwarded.get("userId").asText());
         assertEquals("MANUAL", forwarded.get("provenance").asText());
-        assertEquals("APPLIED", forwarded.get("initialStatus").asText());
+        assertEquals("SAVED", forwarded.get("initialStatus").asText());
         assertNull(createCall.userId());
         assertTrue(DOWNSTREAM.applicationCalls().stream().allMatch(call ->
                 call.authorization().equals("Bearer " + token)));
@@ -1066,8 +1075,10 @@ class JobFinderSecurityIntegrationTest {
                       "id": "%s",
                       "userId": "%s",
                       "jobId": "canonical-1",
+                      "canonicalJobId": "canonical-1",
                       "provider": "REED",
                       "externalJobId": "reed-1",
+                      "provenance": "GENERATED",
                       "jobTitle": "Platform Engineer",
                       "companyName": "Example Ltd",
                       "location": "London",
@@ -1109,7 +1120,10 @@ class JobFinderSecurityIntegrationTest {
                           "generatedAt": "2026-07-29T03:00:00Z"
                         }
                       },
-                      "status": "%s"
+                      "status": "%s",
+                      "createdAt": "2026-07-29T03:00:00",
+                      "updatedAt": "2026-07-29T03:05:00",
+                      "version": 2
                     }
                     """.formatted(id, owner, status);
         }

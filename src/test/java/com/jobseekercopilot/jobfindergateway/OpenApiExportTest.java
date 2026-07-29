@@ -129,6 +129,14 @@ class OpenApiExportTest {
                         .isObject());
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at(
+                        "/components/schemas/ApplicationRecordResponse/properties/canonicalJobId")
+                        .isObject());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at(
+                        "/components/schemas/ApplicationRecordResponse/properties/version")
+                        .isObject());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at(
                         "/components/schemas/DocumentVersionReference/properties/evidenceProvenance")
                         .isObject());
         org.junit.jupiter.api.Assertions.assertTrue(

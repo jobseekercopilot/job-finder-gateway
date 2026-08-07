@@ -31,7 +31,7 @@ class OpenApiExportTest {
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at("/security/0/bearerAuth").isArray());
         org.junit.jupiter.api.Assertions.assertEquals(
-                "1.7.0",
+                "1.8.0",
                 contract.at("/info/version").asText());
         org.junit.jupiter.api.Assertions.assertEquals(
                 1,
@@ -172,6 +172,16 @@ class OpenApiExportTest {
                 contract.at(
                         "/components/schemas/ApplicationRecordResponse/properties/applicationUsedCvDocumentReference")
                         .isObject());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "SELECTED",
+                contract.at(
+                        "/components/schemas/ApplicationRecordResponse/properties/applicationUsedCvState/enum/1")
+                        .asText());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "OMITTED",
+                contract.at(
+                        "/components/schemas/ApplicationRecordResponse/properties/applicationUsedCoverLetterState/enum/2")
+                        .asText());
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at(
                         "/components/schemas/ApplicationRecordResponse/properties/canonicalJobId")

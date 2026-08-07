@@ -22,8 +22,10 @@ public record ApplicationRecordResponse(
         DocumentVersionReference cvDocumentReference,
         DocumentVersionReference coverLetterDocumentReference,
         DocumentVersionReference applicationUsedCvDocumentReference,
+        FrozenDocumentSelectionState applicationUsedCvState,
         DocumentVersionReference
                 applicationUsedCoverLetterDocumentReference,
+        FrozenDocumentSelectionState applicationUsedCoverLetterState,
         LocalDateTime applicationUsedAt,
         String status,
         LocalDateTime createdAt,

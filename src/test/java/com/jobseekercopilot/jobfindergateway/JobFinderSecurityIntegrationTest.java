@@ -641,6 +641,12 @@ class JobFinderSecurityIntegrationTest {
                 2,
                 ((Number) ((Map<?, ?>) response.getBody().get(0)).get("version")).intValue());
         assertEquals(
+                "UNKNOWN",
+                ((Map<?, ?>) response.getBody().get(0)).get("applicationUsedCvState"));
+        assertEquals(
+                "UNKNOWN",
+                ((Map<?, ?>) response.getBody().get(0)).get("applicationUsedCoverLetterState"));
+        assertEquals(
                 "33333333-3333-4333-8333-333333333333",
                 objectMapper.valueToTree(response.getBody())
                         .at("/0/cvDocumentReference/evidenceProvenance/profileRevisionId")
@@ -1206,6 +1212,8 @@ class JobFinderSecurityIntegrationTest {
                           "generatedAt": "2026-07-29T03:00:00Z"
                         }
                       },
+                      "applicationUsedCvState": "UNKNOWN",
+                      "applicationUsedCoverLetterState": "UNKNOWN",
                       "status": "%s",
                       "createdAt": "2026-07-29T03:00:00",
                       "updatedAt": "2026-07-29T03:05:00",

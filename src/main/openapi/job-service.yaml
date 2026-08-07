@@ -15,7 +15,7 @@ info:
   license:
     name: Proprietary source-available
   title: Jobseeker Copilot - Job Service API
-  version: 2.1.0
+  version: 2.2.0
 servers:
 - description: Generated server url
   url: http://localhost:8086
@@ -365,7 +365,7 @@ components:
           type: array
         page:
           default: 1
-          description: One-based aggregate result page.
+          description: One-based page applied to the aggregate compatibility view and independently to every target role.
           example: 1
           format: int32
           maximum: 100
@@ -373,7 +373,7 @@ components:
           type: integer
         pageSize:
           default: 10
-          description: Maximum aggregate results returned on one page.
+          description: Maximum results returned in the aggregate compatibility view and per target role on one page.
           example: 10
           format: int32
           maximum: 50
@@ -381,7 +381,7 @@ components:
           type: integer
         sort:
           default: MOST_RELEVANT
-          description: Stable aggregate result order.
+          description: Stable result order applied to the aggregate compatibility view and independently to every target role.
           enum:
           - MOST_RELEVANT
           - CLOSEST
@@ -693,7 +693,7 @@ components:
           type: boolean
         providerPostedAt:
           deprecated: true
-          description: Legacy timezone-less value retained for compatibility.
+          description: Legacy value retained for compatibility and normalised to an offset timestamp.
           format: date-time
           type: string
         providerPostedAtRaw:
@@ -978,23 +978,23 @@ components:
             $ref: "#/components/schemas/TargetRoleJobResults"
           type: array
         totalResults:
-          description: Number of role/job rows in the bounded aggregate window before paging.
+          description: Number of role/job rows in the bounded aggregate compatibility window before paging.
           format: int32
           type: integer
         page:
-          description: One-based page returned.
+          description: One-based aggregate compatibility page returned.
           format: int32
           maximum: 100
           minimum: 1
           type: integer
         pageSize:
-          description: Maximum jobs returned on this page.
+          description: Maximum jobs returned in the aggregate compatibility page.
           format: int32
           maximum: 50
           minimum: 1
           type: integer
         totalPages:
-          description: Pages available in the bounded aggregate window.
+          description: Pages available in the bounded aggregate compatibility window.
           format: int32
           minimum: 0
           type: integer
@@ -1048,6 +1048,58 @@ components:
           items:
             $ref: "#/components/schemas/Job"
           type: array
+        totalResults:
+          description: Number of jobs in this target role's bounded result window before paging.
+          format: int32
+          minimum: 0
+          type: integer
+        page:
+          description: One-based page returned for this target role.
+          format: int32
+          maximum: 100
+          minimum: 1
+          type: integer
+        pageSize:
+          description: Maximum jobs returned for this target role on this page.
+          format: int32
+          maximum: 50
+          minimum: 1
+          type: integer
+        totalPages:
+          description: Pages available in this target role's bounded result window.
+          format: int32
+          minimum: 0
+          type: integer
+        providerResults:
+          items:
+            $ref: "#/components/schemas/ProviderResultStatus"
+          type: array
+        searchStatus:
+          description: COMPLETE for a healthy role, PARTIAL for usable results with a degraded dependency, or UNAVAILABLE when no provider succeeded for this role.
+          enum:
+          - COMPLETE
+          - PARTIAL
+          - UNAVAILABLE
+          type: string
+        matchingStatus:
+          description: Outcome of optional Job Matching enrichment for this target role.
+          enum:
+          - COMPLETE
+          - NOT_RUN
+          - UNAVAILABLE
+          - TIMED_OUT
+          - SATURATED
+          type: string
+      required:
+      - targetRole
+      - jobs
+      - totalResults
+      - page
+      - pageSize
+      - totalPages
+      - providerResults
+      - searchStatus
+      - matchingStatus
       type: object
     SavedJobResponse:
       properties:

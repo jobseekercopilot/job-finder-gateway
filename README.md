@@ -43,14 +43,16 @@ Job Finder also creates a request-scoped generated Job Service client and
 forwards the original Bearer token; it never relays a caller-supplied identity
 header. Job Service independently verifies the token and derives search
 identity from its subject.
-The browser-facing API 1.5 validates bounded search criteria and caps request
-bodies before any downstream call. It passes valid Job Service API 2.1 `page`,
-`pageSize` and `sort` through unchanged and returns its bounded aggregate
-`totalPages` and effective sort metadata. Invalid, malformed and oversized
-requests use a stable versioned error with safe correlation metadata.
+The browser-facing API 1.7 validates bounded search criteria and caps request
+bodies before any downstream call. It passes valid Job Service API 2.2 `page`,
+`pageSize` and `sort` through unchanged and returns independently paged
+target-role results with role-specific totals and dependency outcomes. The
+bounded aggregate paging fields remain available as compatibility metadata.
+Invalid, malformed and oversized requests use a stable versioned error with
+safe correlation metadata.
 
 Every downstream call has a finite connection-pool, connection, and response
-timeout. The defaults are 250 ms, 500 ms, and 2,500 ms respectively, configured
+timeout. The defaults are 250 ms, 500 ms, and 4,000 ms respectively, configured
 with `JOB_FINDER_CONNECTION_REQUEST_TIMEOUT_MS`,
 `JOB_FINDER_CONNECT_TIMEOUT_MS`, and `JOB_FINDER_RESPONSE_TIMEOUT_MS`. All
 downstream work for one browser request also shares a four-second monotonic

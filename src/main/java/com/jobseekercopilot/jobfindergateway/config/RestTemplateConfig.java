@@ -23,7 +23,7 @@ public class RestTemplateConfig {
             long connectTimeoutMs,
             @Value("${job-finder.downstream.connection-request-timeout-ms:250}")
             long connectionRequestTimeoutMs,
-            @Value("${job-finder.downstream.response-timeout-ms:2500}")
+            @Value("${job-finder.downstream.response-timeout-ms:4000}")
             long responseTimeoutMs,
             ObjectProvider<RestTemplateCustomizer> customizers) {
         Duration connectTimeout = positiveDuration(
@@ -44,20 +44,12 @@ public class RestTemplateConfig {
         requestFactory.setHttpContextFactory((method, uri) -> {
             Duration remaining = RequestDeadline.remaining()
                     .orElse(responseTimeout);
-            Duration boundedResponseTimeout = minPositive(
-                    responseTimeout,
-                    remaining);
             HttpClientContext context = HttpClientContext.create();
-            context.setRequestConfig(RequestConfig.custom()
-                    .setConnectTimeout(Timeout.of(minPositive(
-                            connectTimeout,
-                            remaining)))
-                    .setConnectionRequestTimeout(Timeout.of(minPositive(
-                            connectionRequestTimeout,
-                            remaining)))
-                    .setResponseTimeout(Timeout.of(boundedResponseTimeout))
-                    .setHardCancellationEnabled(true)
-                    .build());
+            context.setRequestConfig(boundedRequestConfig(
+                    connectTimeout,
+                    connectionRequestTimeout,
+                    responseTimeout,
+                    remaining));
             return context;
         });
 
@@ -65,6 +57,25 @@ public class RestTemplateConfig {
         customizers.orderedStream()
                 .forEach(customizer -> customizer.customize(restTemplate));
         return restTemplate;
+    }
+
+    static RequestConfig boundedRequestConfig(
+            Duration connectTimeout,
+            Duration connectionRequestTimeout,
+            Duration responseTimeout,
+            Duration remaining) {
+        return RequestConfig.custom()
+                .setConnectTimeout(Timeout.of(minPositive(
+                        connectTimeout,
+                        remaining)))
+                .setConnectionRequestTimeout(Timeout.of(minPositive(
+                        connectionRequestTimeout,
+                        remaining)))
+                .setResponseTimeout(Timeout.of(minPositive(
+                        responseTimeout,
+                        remaining)))
+                .setHardCancellationEnabled(true)
+                .build();
     }
 
     private static Duration positiveDuration(String property, long milliseconds) {

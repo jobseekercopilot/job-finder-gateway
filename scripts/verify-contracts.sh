@@ -22,9 +22,9 @@ done
 
 test "$(wc -l < "$job_source" | tr -d ' ')" = 4
 grep -Fx 'repository=jobseekercopilot/job-service' "$job_source" >/dev/null
-grep -Fx 'revision=2cce83ddc057967b7a20d43c970499bffe0dd31f' "$job_source" >/dev/null
+grep -Fx 'revision=781017eeb63aaf046d3d3c3cb6f962128d439d1a' "$job_source" >/dev/null
 grep -Fx 'path=api/openapi.yaml' "$job_source" >/dev/null
-grep -Fx 'sha256=3d3af14c64393df44b605226bb5950bc442ed901f43f12418f65a7b5d80408ce' "$job_source" >/dev/null
+grep -Fx 'sha256=b2860a2caebeeda56f49bfefc1fd15eeedb82c945beacb02be16a4326342fed8' "$job_source" >/dev/null
 
 test "$(wc -l < "$profile_source" | tr -d ' ')" = 4
 grep -Fx 'repository=jobseekercopilot/user-profile-service' "$profile_source" >/dev/null
@@ -42,7 +42,7 @@ done
 grep -Fx '      - bearerAuth: []' "$job_contract" >/dev/null
 test "$(grep -c '^      - bearerAuth: \[\]$' "$job_contract")" = 5
 grep -Fx '      scheme: bearer' "$job_contract" >/dev/null
-grep -Fx '  version: 2.1.0' "$job_contract" >/dev/null
+grep -Fx '  version: 2.2.0' "$job_contract" >/dev/null
 if grep -F 'name: X-User-Id' "$job_contract" >/dev/null; then
     echo "contract policy: Job Service contract reintroduced raw identity header" >&2
     exit 1
@@ -77,6 +77,28 @@ for required_field in \
     job; do
     grep -Fx "        $required_field:" "$job_contract" >/dev/null
 done
+
+target_role_schema="$(
+    awk '
+        $0 == "    TargetRoleJobResults:" { capture = 1 }
+        capture && seen && $0 ~ /^    [[:alnum:]][[:alnum:]]*:/ { exit }
+        capture { print; seen = 1 }
+    ' "$job_contract"
+)"
+for required_role_field in \
+    targetRole \
+    jobs \
+    totalResults \
+    page \
+    pageSize \
+    totalPages \
+    providerResults \
+    searchStatus \
+    matchingStatus; do
+    grep -Fx "        $required_role_field:" <<<"$target_role_schema" >/dev/null
+    grep -Fx "      - $required_role_field" <<<"$target_role_schema" >/dev/null
+done
+grep -Fx '          - UNAVAILABLE' <<<"$target_role_schema" >/dev/null
 
 for sort in MOST_RELEVANT CLOSEST HIGHEST_SALARY NEWEST_POSTED \
     OLDEST_POSTED COMPANY_AZ JOB_TITLE_AZ; do

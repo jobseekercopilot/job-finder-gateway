@@ -151,6 +151,51 @@ class JobFinderSecurityIntegrationTest {
                 "NOT_RUN",
                 objectMapper.valueToTree(response.getBody()).at("/matchingStatus").asText());
         assertEquals(
+                "Platform Engineer",
+                objectMapper.valueToTree(response.getBody())
+                        .at("/resultsByTargetRole/0/targetRole")
+                        .asText());
+        assertEquals(
+                "canonical-1",
+                objectMapper.valueToTree(response.getBody())
+                        .at("/resultsByTargetRole/0/jobs/0/canonicalJobId")
+                        .asText());
+        assertEquals(
+                37,
+                objectMapper.valueToTree(response.getBody())
+                        .at("/resultsByTargetRole/0/totalResults")
+                        .asInt());
+        assertEquals(
+                2,
+                objectMapper.valueToTree(response.getBody())
+                        .at("/resultsByTargetRole/0/page")
+                        .asInt());
+        assertEquals(
+                20,
+                objectMapper.valueToTree(response.getBody())
+                        .at("/resultsByTargetRole/0/pageSize")
+                        .asInt());
+        assertEquals(
+                2,
+                objectMapper.valueToTree(response.getBody())
+                        .at("/resultsByTargetRole/0/totalPages")
+                        .asInt());
+        assertEquals(
+                "TIMED_OUT",
+                objectMapper.valueToTree(response.getBody())
+                        .at("/resultsByTargetRole/0/providerResults/1/status")
+                        .asText());
+        assertEquals(
+                "PARTIAL",
+                objectMapper.valueToTree(response.getBody())
+                        .at("/resultsByTargetRole/0/searchStatus")
+                        .asText());
+        assertEquals(
+                "COMPLETE",
+                objectMapper.valueToTree(response.getBody())
+                        .at("/resultsByTargetRole/0/matchingStatus")
+                        .asText());
+        assertEquals(
                 "2.0",
                 objectMapper.valueToTree(response.getBody()).at("/jobs/0/canonicalSchemaVersion").asText());
         assertEquals(
@@ -197,6 +242,12 @@ class JobFinderSecurityIntegrationTest {
                 """,
                 """
                 {"aspirations":{"desiredRoles":["Engineer"],"locations":["London"]},"page":0}
+                """,
+                """
+                {"aspirations":{"desiredRoles":["Engineer"],"locations":["London"]},"page":101}
+                """,
+                """
+                {"aspirations":{"desiredRoles":["Engineer"],"locations":["London"]},"pageSize":0}
                 """,
                 """
                 {"aspirations":{"desiredRoles":["Engineer"],"locations":["London"]},"pageSize":51}
@@ -581,6 +632,15 @@ class JobFinderSecurityIntegrationTest {
         assertEquals(1, response.getBody().size());
         assertEquals("alice", ((Map<?, ?>) response.getBody().get(0)).get("userId"));
         assertEquals(
+                "canonical-1",
+                ((Map<?, ?>) response.getBody().get(0)).get("canonicalJobId"));
+        assertEquals(
+                "GENERATED",
+                ((Map<?, ?>) response.getBody().get(0)).get("provenance"));
+        assertEquals(
+                2,
+                ((Number) ((Map<?, ?>) response.getBody().get(0)).get("version")).intValue());
+        assertEquals(
                 "33333333-3333-4333-8333-333333333333",
                 objectMapper.valueToTree(response.getBody())
                         .at("/0/cvDocumentReference/evidenceProvenance/profileRevisionId")
@@ -589,6 +649,16 @@ class JobFinderSecurityIntegrationTest {
                 "44444444-4444-4444-8444-444444444444",
                 objectMapper.valueToTree(response.getBody())
                         .at("/0/cvDocumentReference/evidenceProvenance/evidenceSnapshotId")
+                        .asText());
+        assertEquals(
+                "QUALIFICATION_TRAINING",
+                objectMapper.valueToTree(response.getBody())
+                        .at("/0/cvDocumentReference/evidenceProvenance/evidenceRevisions/0/category")
+                        .asText());
+        assertEquals(
+                "PROJECT",
+                objectMapper.valueToTree(response.getBody())
+                        .at("/0/cvDocumentReference/evidenceProvenance/evidenceRevisions/1/category")
                         .asText());
         assertTrue(DOWNSTREAM.applicationCalls().stream().anyMatch(call ->
                 call.method().equals("GET")
@@ -650,7 +720,7 @@ class JobFinderSecurityIntegrationTest {
         JsonNode forwarded = objectMapper.readTree(createCall.body());
         assertEquals("alice", forwarded.get("userId").asText());
         assertEquals("MANUAL", forwarded.get("provenance").asText());
-        assertEquals("APPLIED", forwarded.get("initialStatus").asText());
+        assertEquals("SAVED", forwarded.get("initialStatus").asText());
         assertNull(createCall.userId());
         assertTrue(DOWNSTREAM.applicationCalls().stream().allMatch(call ->
                 call.authorization().equals("Bearer " + token)));
@@ -892,7 +962,42 @@ class JobFinderSecurityIntegrationTest {
                         },
                         "fieldProvenance": []
                       }],
-                      "resultsByTargetRole": [],
+                      "resultsByTargetRole": [{
+                        "targetRole": "Platform Engineer",
+                        "jobs": [{
+                          "canonicalSchemaVersion": "2.0",
+                          "canonicalJobId": "canonical-1",
+                          "primarySource": "REED",
+                          "externalJobId": "reed-1",
+                          "title": "Platform Engineer",
+                          "employmentTypeCode": "UNKNOWN",
+                          "contractTypeCode": "UNKNOWN",
+                          "workplaceType": "UNKNOWN",
+                          "sources": [],
+                          "skills": [],
+                          "experience": {
+                            "level": "UNKNOWN",
+                            "normalisationStatus": "NOT_PROVIDED"
+                          },
+                          "fieldProvenance": []
+                        }],
+                        "totalResults": 37,
+                        "page": 2,
+                        "pageSize": 20,
+                        "totalPages": 2,
+                        "providerResults": [{
+                          "provider": "REED",
+                          "status": "SUCCESS",
+                          "rawResultCount": 20
+                        }, {
+                          "provider": "ADZUNA",
+                          "status": "TIMED_OUT",
+                          "rawResultCount": 0,
+                          "errorMessage": "Provider request timed out"
+                        }],
+                        "searchStatus": "PARTIAL",
+                        "matchingStatus": "COMPLETE"
+                      }],
                       "totalResults": 1,
                       "page": 2,
                       "pageSize": 20,
@@ -1056,8 +1161,10 @@ class JobFinderSecurityIntegrationTest {
                       "id": "%s",
                       "userId": "%s",
                       "jobId": "canonical-1",
+                      "canonicalJobId": "canonical-1",
                       "provider": "REED",
                       "externalJobId": "reed-1",
+                      "provenance": "GENERATED",
                       "jobTitle": "Platform Engineer",
                       "companyName": "Example Ltd",
                       "location": "London",
@@ -1080,10 +1187,16 @@ class JobFinderSecurityIntegrationTest {
                             "entryId": "55555555-5555-4555-8555-555555555555",
                             "revisionId": "66666666-6666-4666-8666-666666666666",
                             "revisionNumber": 2,
-                            "category": "PROJECTS",
+                            "category": "QUALIFICATION_TRAINING",
                             "contentDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+                          }, {
+                            "entryId": "88888888-8888-4888-8888-888888888888",
+                            "revisionId": "99999999-9999-4999-8999-999999999999",
+                            "revisionNumber": 1,
+                            "category": "PROJECT",
+                            "contentDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
                           }],
-                          "sectionOrder": ["PROJECTS"],
+                          "sectionOrder": ["QUALIFICATION_TRAINING", "PROJECT"],
                           "claimLedger": {
                             "ledgerId": "77777777-7777-4777-8777-777777777777",
                             "ledgerSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
@@ -1093,7 +1206,10 @@ class JobFinderSecurityIntegrationTest {
                           "generatedAt": "2026-07-29T03:00:00Z"
                         }
                       },
-                      "status": "%s"
+                      "status": "%s",
+                      "createdAt": "2026-07-29T03:00:00",
+                      "updatedAt": "2026-07-29T03:05:00",
+                      "version": 2
                     }
                     """.formatted(id, owner, status);
         }

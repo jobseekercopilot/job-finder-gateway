@@ -252,7 +252,7 @@ public class JobSearchController {
             trackerRequest.put("location", request.location());
         }
         trackerRequest.put("provenance", "MANUAL");
-        trackerRequest.put("initialStatus", "APPLIED");
+        trackerRequest.put("initialStatus", "SAVED");
 
         try {
             ResponseEntity<Object> response = restTemplate.exchange(

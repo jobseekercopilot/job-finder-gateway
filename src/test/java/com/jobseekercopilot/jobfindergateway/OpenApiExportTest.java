@@ -31,12 +31,22 @@ class OpenApiExportTest {
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at("/security/0/bearerAuth").isArray());
         org.junit.jupiter.api.Assertions.assertEquals(
-                "1.6.0",
+                "1.7.0",
                 contract.at("/info/version").asText());
         org.junit.jupiter.api.Assertions.assertEquals(
                 1,
                 contract.at(
                         "/components/schemas/JobSearchRequest/properties/page/minimum")
+                        .asInt());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                100,
+                contract.at(
+                        "/components/schemas/JobSearchRequest/properties/page/maximum")
+                        .asInt());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                1,
+                contract.at(
+                        "/components/schemas/JobSearchRequest/properties/pageSize/minimum")
                         .asInt());
         org.junit.jupiter.api.Assertions.assertEquals(
                 50,
@@ -107,6 +117,41 @@ class OpenApiExportTest {
                 contract.at(
                         "/components/schemas/ReedJobSearchResponse/properties/sort/enum/0")
                         .asText());
+        for (String roleResultField : java.util.List.of(
+                "targetRole",
+                "jobs",
+                "totalResults",
+                "page",
+                "pageSize",
+                "totalPages",
+                "providerResults",
+                "searchStatus",
+                "matchingStatus")) {
+            org.junit.jupiter.api.Assertions.assertTrue(
+                    contract.at(
+                            "/components/schemas/TargetRoleJobResults/properties/"
+                                    + roleResultField)
+                            .isObject(),
+                    "Missing role result field " + roleResultField);
+        }
+        org.junit.jupiter.api.Assertions.assertEquals(
+                9,
+                contract.at("/components/schemas/TargetRoleJobResults/required").size());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "UNAVAILABLE",
+                contract.at(
+                        "/components/schemas/TargetRoleJobResults/properties/searchStatus/enum/2")
+                        .asText());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                100,
+                contract.at(
+                        "/components/schemas/TargetRoleJobResults/properties/page/maximum")
+                        .asInt());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                50,
+                contract.at(
+                        "/components/schemas/TargetRoleJobResults/properties/pageSize/maximum")
+                        .asInt());
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at("/paths/~1api~1jobs~1saved/post").isObject());
         org.junit.jupiter.api.Assertions.assertTrue(
@@ -126,6 +171,14 @@ class OpenApiExportTest {
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at(
                         "/components/schemas/ApplicationRecordResponse/properties/applicationUsedCvDocumentReference")
+                        .isObject());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at(
+                        "/components/schemas/ApplicationRecordResponse/properties/canonicalJobId")
+                        .isObject());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at(
+                        "/components/schemas/ApplicationRecordResponse/properties/version")
                         .isObject());
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at(

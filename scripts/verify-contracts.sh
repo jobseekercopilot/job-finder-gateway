@@ -22,9 +22,9 @@ done
 
 test "$(wc -l < "$job_source" | tr -d ' ')" = 4
 grep -Fx 'repository=jobseekercopilot/job-service' "$job_source" >/dev/null
-grep -Fx 'revision=781017eeb63aaf046d3d3c3cb6f962128d439d1a' "$job_source" >/dev/null
+grep -Fx 'revision=15a8a6034a7e454c3691b12964a98b2449ddaad5' "$job_source" >/dev/null
 grep -Fx 'path=api/openapi.yaml' "$job_source" >/dev/null
-grep -Fx 'sha256=b2860a2caebeeda56f49bfefc1fd15eeedb82c945beacb02be16a4326342fed8' "$job_source" >/dev/null
+grep -Fx 'sha256=7e0c39e1e26aa3d2c50091f947c69246b1d6e173bcb466a0fd3c032defb4ac5b' "$job_source" >/dev/null
 
 test "$(wc -l < "$profile_source" | tr -d ' ')" = 4
 grep -Fx 'repository=jobseekercopilot/user-profile-service' "$profile_source" >/dev/null

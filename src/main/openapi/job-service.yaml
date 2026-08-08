@@ -472,6 +472,8 @@ components:
         jobTitle: title
         company: company
         companyName: company
+        advertiserName: company
+        advertiserType: UNKNOWN
         location: location
         salary:
           min: 0
@@ -512,6 +514,17 @@ components:
           description: Legacy alias of companyName retained for compatibility.
           type: string
         companyName:
+          type: string
+        advertiserName:
+          description: Organisation that published or advertised the vacancy.
+          type: string
+        advertiserType:
+          $ref: "#/components/schemas/AdvertiserType"
+        hiringOrganisationName:
+          description: Employer or client organisation when it is explicitly named separately from the advertiser.
+          type: string
+        applicationContactName:
+          description: Named application contact exactly as supplied by the advert or confirmed by the user.
           type: string
         location:
           deprecated: true
@@ -566,6 +579,8 @@ components:
           type: boolean
         description:
           type: string
+        descriptionCompleteness:
+          $ref: "#/components/schemas/JobDescriptionCompleteness"
         url:
           description: Preferred validated HTTP(S) application URL.
           format: uri
@@ -874,6 +889,21 @@ components:
       - INTERNSHIP
       - APPRENTICESHIP
       - OTHER
+      - UNKNOWN
+      type: string
+    AdvertiserType:
+      description: Whether the vacancy advertiser is the employer, a recruiter, or not yet established.
+      enum:
+      - EMPLOYER
+      - RECRUITER
+      - UNKNOWN
+      type: string
+    JobDescriptionCompleteness:
+      description: Provenance-aware assessment of whether the retained advert is complete enough for tailoring.
+      enum:
+      - FULL
+      - PREVIEW
+      - USER_CONFIRMED
       - UNKNOWN
       type: string
     ContractTypeCode:

@@ -1,6 +1,7 @@
 package com.jobseekercopilot.jobfindergateway.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jobseekercopilot.generated.jobservice.model.Job;
 import com.jobseekercopilot.generated.jobservice.model.ReedJobSearchResponse;
 import com.jobseekercopilot.jobfindergateway.client.JobServiceClientFactory;
 import com.jobseekercopilot.jobfindergateway.client.UserProfileClientFactory;
@@ -190,6 +191,51 @@ public class JobSearchController {
                     e.getClass().getSimpleName(),
                     e);
             return jobServiceFailure(e);
+        }
+    }
+
+    @GetMapping("/provider/{provider}/{externalJobId}")
+    @Operation(
+            summary = "Get complete provider job details",
+            description = "Fetches a selected job's generation-time description without hydrating every search result.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Job details returned",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = Job.class))),
+            @ApiResponse(responseCode = "404", description = "Provider details are not available",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiErrorResponse.class))),
+            @ApiResponse(responseCode = "503", description = "Job Service unavailable",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiErrorResponse.class)))
+    })
+    public ResponseEntity<?> getJobDetails(
+            @AuthenticationPrincipal Jwt accessToken,
+            @PathVariable String provider,
+            @PathVariable String externalJobId) {
+        try {
+            Job details = jobServiceClientFactory
+                    .authenticated(accessToken.getTokenValue())
+                    .getJobDetails(
+                            provider.toUpperCase(Locale.ROOT),
+                            externalJobId);
+            if (details == null) {
+                return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                        .body(apiError(
+                                "JOB_FINDER_INVALID_JOB_SERVICE_RESPONSE",
+                                "The job service returned an invalid response."));
+            }
+            return ResponseEntity.ok(details);
+        } catch (HttpStatusCodeException exception) {
+            if (exception.getStatusCode() == HttpStatus.NOT_FOUND) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(apiError(
+                                "JOB_FINDER_JOB_DETAILS_NOT_FOUND",
+                                "Complete provider job details are not available."));
+            }
+            return jobServiceFailure(exception);
+        } catch (RestClientException exception) {
+            return jobServiceFailure(exception);
         }
     }
 

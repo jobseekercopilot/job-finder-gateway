@@ -22,9 +22,9 @@ done
 
 test "$(wc -l < "$job_source" | tr -d ' ')" = 4
 grep -Fx 'repository=jobseekercopilot/job-service' "$job_source" >/dev/null
-grep -Fx 'revision=15a8a6034a7e454c3691b12964a98b2449ddaad5' "$job_source" >/dev/null
+grep -Fx 'revision=1fa6fe2d73f7d86c3bf9cd73bab4a15e005fa80d' "$job_source" >/dev/null
 grep -Fx 'path=api/openapi.yaml' "$job_source" >/dev/null
-grep -Fx 'sha256=7e0c39e1e26aa3d2c50091f947c69246b1d6e173bcb466a0fd3c032defb4ac5b' "$job_source" >/dev/null
+grep -Fx 'sha256=7dac4248c0dbb25c1fcc595afcc4550a8a6e04a19c3d64e775cb76984d776bd0' "$job_source" >/dev/null
 
 test "$(wc -l < "$profile_source" | tr -d ' ')" = 4
 grep -Fx 'repository=jobseekercopilot/user-profile-service' "$profile_source" >/dev/null
@@ -33,14 +33,16 @@ grep -Fx 'path=api/openapi.json' "$profile_source" >/dev/null
 grep -Fx 'sha256=ffaaa16a169ab11d864f82440be9fcc7d5df2d4f2d63a3525d40bda497ea6598' "$profile_source" >/dev/null
 
 grep -Fx '  /api/jobs/search:' "$job_contract" >/dev/null
+grep -Fx '  /api/jobs/{provider}/{externalJobId}:' "$job_contract" >/dev/null
 grep -Fx '  /api/jobs/saved:' "$job_contract" >/dev/null
 grep -Fx '  /api/jobs/saved/{savedJobId}:' "$job_contract" >/dev/null
 grep -Fx '      operationId: searchJobs' "$job_contract" >/dev/null
+grep -Fx '      operationId: getJobDetails' "$job_contract" >/dev/null
 for required_operation in save list get unsave; do
     grep -Fx "      operationId: $required_operation" "$job_contract" >/dev/null
 done
 grep -Fx '      - bearerAuth: []' "$job_contract" >/dev/null
-test "$(grep -c '^      - bearerAuth: \[\]$' "$job_contract")" = 5
+test "$(grep -c '^      - bearerAuth: \[\]$' "$job_contract")" = 6
 grep -Fx '      scheme: bearer' "$job_contract" >/dev/null
 grep -Fx '  version: 2.2.0' "$job_contract" >/dev/null
 if grep -F 'name: X-User-Id' "$job_contract" >/dev/null; then

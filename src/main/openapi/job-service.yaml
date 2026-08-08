@@ -25,6 +25,47 @@ tags:
 - description: Owner-scoped immutable canonical job snapshots
   name: Saved Jobs
 paths:
+  /api/jobs/{provider}/{externalJobId}:
+    get:
+      description: Hydrates one selected job from its provider before document generation.
+      operationId: getJobDetails
+      parameters:
+      - in: path
+        name: provider
+        required: true
+        schema:
+          type: string
+      - in: path
+        name: externalJobId
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/Job"
+          description: Provider job details
+        "400":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Invalid provider or external job ID
+        "404":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Provider details are not available
+      security:
+      - bearerAuth: []
+      summary: Get provider job details
+      tags:
+      - Job Search
+      x-accepts:
+      - '*/*'
   /api/jobs/search:
     post:
       description: "Searches for jobs based on user aspirations and work preferences.\

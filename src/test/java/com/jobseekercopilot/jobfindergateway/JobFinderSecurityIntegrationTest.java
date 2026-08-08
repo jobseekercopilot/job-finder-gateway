@@ -208,6 +208,29 @@ class JobFinderSecurityIntegrationTest {
     }
 
     @Test
+    void selectedJobDetailsForwardBearerAndReturnCompleteDescription() {
+        String token = JWKS.validToken("job-detail-owner");
+        HttpHeaders headers = authenticated(token);
+        headers.set("X-Correlation-Id", "job-details-boundary");
+
+        ResponseEntity<Map> response = restTemplate.exchange(
+                "/api/jobs/provider/reed/reed-1",
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals("Bearer " + token, DOWNSTREAM.jobAuthorization());
+        assertEquals("job-details-boundary", DOWNSTREAM.jobCorrelationId());
+        assertNull(DOWNSTREAM.jobUserId());
+        JsonNode body = objectMapper.valueToTree(response.getBody());
+        assertEquals("FULL", body.at("/descriptionCompleteness").asText());
+        assertEquals(
+                "Complete provider job description.",
+                body.at("/description").asText());
+    }
+
+    @Test
     void omittedPagingFieldsRemainUnsetForJobServiceDefaults() throws Exception {
         ResponseEntity<Map> response = search(
                 authenticated(JWKS.validToken("default-paging-user")),
@@ -916,6 +939,9 @@ class JobFinderSecurityIntegrationTest {
                     server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
                     server.createContext("/api/profiles/me", this::profile);
                     server.createContext("/api/jobs/search", this::jobs);
+                    server.createContext(
+                            "/api/jobs/REED/reed-1",
+                            this::jobDetails);
                     server.createContext("/api/jobs/saved", this::savedJobs);
                     server.createContext("/api/v1/applications", this::applications);
                     server.createContext("/api/v1/documents", this::documents);
@@ -1016,6 +1042,27 @@ class JobFinderSecurityIntegrationTest {
                       }],
                       "searchStatus": "COMPLETE",
                       "matchingStatus": "NOT_RUN"
+                    }
+                    """);
+        }
+
+        private void jobDetails(HttpExchange exchange) throws IOException {
+            jobAuthorization.set(
+                    exchange.getRequestHeaders().getFirst("Authorization"));
+            jobCorrelationId.set(
+                    exchange.getRequestHeaders().getFirst("X-Correlation-Id"));
+            jobUserId.set(exchange.getRequestHeaders().getFirst("X-User-Id"));
+            respond(exchange, 200, """
+                    {
+                      "canonicalSchemaVersion": "2.0",
+                      "canonicalJobId": "reed-1",
+                      "primarySource": "REED",
+                      "externalJobId": "reed-1",
+                      "title": "Platform Engineer",
+                      "description": "Complete provider job description.",
+                      "descriptionCompleteness": "FULL",
+                      "sources": [],
+                      "fieldProvenance": []
                     }
                     """);
         }

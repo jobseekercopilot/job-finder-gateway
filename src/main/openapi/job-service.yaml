@@ -15,7 +15,7 @@ info:
   license:
     name: Proprietary source-available
   title: Jobseeker Copilot - Job Service API
-  version: 2.2.0
+  version: 2.3.0
 servers:
 - description: Generated server url
   url: http://localhost:8086
@@ -670,6 +670,15 @@ components:
           $ref: "#/components/schemas/WorkplaceTypeCode"
         category:
           type: string
+        specialistType:
+          $ref: "#/components/schemas/JobSpecialistType"
+        locations:
+          description: All locations explicitly advertised by the source.
+          items:
+            $ref: "#/components/schemas/CanonicalLocation"
+          type: array
+        apprenticeshipDetails:
+          $ref: "#/components/schemas/ApprenticeshipDetails"
         postedDate:
           deprecated: true
           description: Legacy raw provider date retained for compatibility.
@@ -1083,9 +1092,61 @@ components:
       - JOB_BOARD
       - RECRUITER
       - AGGREGATOR
+      - OFFICIAL_PROVIDER
       - OTHER
       - UNKNOWN
       type: string
+    JobSpecialistType:
+      enum:
+      - STANDARD
+      - NHS
+      - APPRENTICESHIP
+      type: string
+    ApprenticeshipDetails:
+      description: Structured training and wage context supplied by Find an apprenticeship.
+      properties:
+        courseTitle:
+          type: string
+        courseLevel:
+          format: int32
+          type: integer
+        courseLarsCode:
+          format: int32
+          type: integer
+        courseRoute:
+          type: string
+        apprenticeshipLevel:
+          type: string
+        trainingProvider:
+          type: string
+        startDate:
+          type: string
+        duration:
+          type: string
+        hoursPerWeek:
+          type: number
+        numberOfPositions:
+          format: int32
+          type: integer
+        wageType:
+          type: string
+        wageAdditionalInformation:
+          type: string
+        workingWeekDescription:
+          type: string
+        nationalVacancy:
+          type: boolean
+        nationalVacancyDetails:
+          type: string
+        qualifications:
+          items:
+            type: string
+          type: array
+        thingsToConsider:
+          type: string
+        companyBenefitsInformation:
+          type: string
+      type: object
     SalaryPeriodCode:
       enum:
       - HOUR

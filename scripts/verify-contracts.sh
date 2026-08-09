@@ -28,7 +28,7 @@ grep -Fx 'sha256=dc233e8e62a46c5022dfb074b8567e61b56a4fad0f15e98a57daf3caf1dfa81
 
 test "$(wc -l < "$profile_source" | tr -d ' ')" = 4
 grep -Fx 'repository=jobseekercopilot/user-profile-service' "$profile_source" >/dev/null
-grep -Fx 'revision=4e8c7c4c53bc89e97c76136d5633bbf1b93c3d55' "$profile_source" >/dev/null
+grep -Fx 'revision=fce8d0aac12b6b6010fa406582c8f69beb9947b2' "$profile_source" >/dev/null
 grep -Fx 'path=api/openapi.json' "$profile_source" >/dev/null
 grep -Fx 'sha256=f81c90a801ff877930304417be9bc7cdf2c39b2f2c61dc212b43b1cdf72dba75' "$profile_source" >/dev/null
 

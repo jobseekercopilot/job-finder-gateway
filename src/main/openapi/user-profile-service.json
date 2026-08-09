@@ -883,8 +883,7 @@
         "properties": {
           "locationId": {
             "type": "string",
-            "format": "uuid",
-            "maxLength": 36
+            "format": "uuid"
           },
           "displayName": {
             "type": "string",

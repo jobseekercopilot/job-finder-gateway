@@ -299,6 +299,21 @@ public class JobSearchRequest {
         @DecimalMax(value = "180.0", message = "workPreferences.homeLongitude cannot exceed 180")
         private Double homeLongitude;
 
+        @Size(max = 2, message = "workPreferences.commuteTravelModes cannot contain more than 2 values")
+        private List<@Pattern(regexp = "DRIVE|TRANSIT") String> commuteTravelModes;
+
+        @Min(5) @Max(180)
+        private Integer maximumDrivingMinutes;
+
+        @Min(5) @Max(180)
+        private Integer maximumTransitMinutes;
+
+        @Min(0) @Max(500)
+        private Integer maximumDistanceMiles;
+
+        @Size(max = 3)
+        private List<@Pattern(regexp = "ONSITE|HYBRID|REMOTE") String> workplaceArrangements;
+
         public WorkPreferences() {
         }
 
@@ -349,9 +364,23 @@ public class JobSearchRequest {
         public void setHomeLongitude(Double homeLongitude) {
             this.homeLongitude = homeLongitude;
         }
+
+        public List<String> getCommuteTravelModes() { return commuteTravelModes; }
+        public void setCommuteTravelModes(List<String> value) { this.commuteTravelModes = value; }
+        public Integer getMaximumDrivingMinutes() { return maximumDrivingMinutes; }
+        public void setMaximumDrivingMinutes(Integer value) { this.maximumDrivingMinutes = value; }
+        public Integer getMaximumTransitMinutes() { return maximumTransitMinutes; }
+        public void setMaximumTransitMinutes(Integer value) { this.maximumTransitMinutes = value; }
+        public Integer getMaximumDistanceMiles() { return maximumDistanceMiles; }
+        public void setMaximumDistanceMiles(Integer value) { this.maximumDistanceMiles = value; }
+        public List<String> getWorkplaceArrangements() { return workplaceArrangements; }
+        public void setWorkplaceArrangements(List<String> value) { this.workplaceArrangements = value; }
     }
 
     public static class HomeLocation {
+
+        @Size(max = 36)
+        private String locationId;
 
         @Size(max = 200, message = "homeLocation.displayName cannot exceed 200 characters")
         private String displayName;
@@ -366,6 +395,18 @@ public class JobSearchRequest {
         @DecimalMin(value = "-180.0", message = "homeLocation.longitude must be at least -180")
         @DecimalMax(value = "180.0", message = "homeLocation.longitude cannot exceed 180")
         private Double longitude;
+
+        @Size(min = 2, max = 2)
+        private String countryCode;
+
+        @Pattern(regexp = "EXACT_ADDRESS|POSTCODE_CENTROID|LOCALITY_CENTROID|PROVIDER_COORDINATE|NONE")
+        private String precision;
+
+        @Pattern(regexp = "VERIFIED|PROVIDED|INFERRED|AMBIGUOUS|UNKNOWN")
+        private String confidence;
+
+        public String getLocationId() { return locationId; }
+        public void setLocationId(String locationId) { this.locationId = locationId; }
 
         public String getDisplayName() {
             return displayName;
@@ -398,5 +439,12 @@ public class JobSearchRequest {
         public void setLongitude(Double longitude) {
             this.longitude = longitude;
         }
+
+        public String getCountryCode() { return countryCode; }
+        public void setCountryCode(String countryCode) { this.countryCode = countryCode; }
+        public String getPrecision() { return precision; }
+        public void setPrecision(String precision) { this.precision = precision; }
+        public String getConfidence() { return confidence; }
+        public void setConfidence(String confidence) { this.confidence = confidence; }
     }
 }

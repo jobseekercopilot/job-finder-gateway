@@ -567,16 +567,34 @@ public class JobSearchController {
         workPreferences.setEmploymentType(employmentTypes(profile));
         workPreferences.setCompanySize(List.of());
         workPreferences.setCulture(List.of());
+        if (profile.getWorkPreferences().getCommuteTravelModes() != null) {
+            workPreferences.setCommuteTravelModes(profile.getWorkPreferences().getCommuteTravelModes().stream()
+                    .map(Enum::name).toList());
+        }
+        workPreferences.setMaximumDrivingMinutes(profile.getWorkPreferences().getMaximumDrivingMinutes());
+        workPreferences.setMaximumTransitMinutes(profile.getWorkPreferences().getMaximumTransitMinutes());
+        workPreferences.setMaximumDistanceMiles(profile.getWorkPreferences().getCommuteRange());
+        if (profile.getWorkPreferences().getWorkplaceArrangements() != null) {
+            workPreferences.setWorkplaceArrangements(profile.getWorkPreferences().getWorkplaceArrangements().stream()
+                    .map(Enum::name).toList());
+        }
 
         var sourceLocation = profile.getWorkPreferences().getLocation();
         workPreferences.setHomeLatitude(sourceLocation.getLatitude());
         workPreferences.setHomeLongitude(sourceLocation.getLongitude());
 
         var homeLocation = new JobSearchRequest.HomeLocation();
-        homeLocation.setDisplayName(firstNonBlank(sourceLocation.getAdminDistrict(), sourceLocation.getRegion()));
+        homeLocation.setLocationId(sourceLocation.getLocationId() == null
+                ? null
+                : sourceLocation.getLocationId().toString());
+        homeLocation.setDisplayName(firstNonBlank(sourceLocation.getDisplayName(),
+                firstNonBlank(sourceLocation.getAdminDistrict(), sourceLocation.getRegion())));
         homeLocation.setPostcode(sourceLocation.getPostcode());
         homeLocation.setLatitude(sourceLocation.getLatitude());
         homeLocation.setLongitude(sourceLocation.getLongitude());
+        homeLocation.setCountryCode(sourceLocation.getCountryCode());
+        homeLocation.setPrecision(sourceLocation.getPrecision() == null ? null : sourceLocation.getPrecision().name());
+        homeLocation.setConfidence(sourceLocation.getConfidence() == null ? null : sourceLocation.getConfidence().name());
 
         var request = new JobSearchRequest();
         request.setAspirations(aspirations);

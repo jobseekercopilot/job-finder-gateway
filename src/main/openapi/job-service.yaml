@@ -438,6 +438,9 @@ components:
     HomeLocation:
       description: User home location used for provider radius queries and distance sorting
       properties:
+        locationId:
+          description: Stable Job Seeker Copilot location identity.
+          type: string
         displayName:
           description: Human-readable location label
           type: string
@@ -456,6 +459,12 @@ components:
           maximum: 180
           minimum: -180
           type: number
+        countryCode:
+          type: string
+        precision:
+          type: string
+        confidence:
+          type: string
       type: object
     SalaryExpectation:
       example:
@@ -500,6 +509,78 @@ components:
           items:
             type: string
           type: array
+        workplaceArrangements:
+          items:
+            type: string
+          type: array
+        commuteTravelModes:
+          items:
+            $ref: "#/components/schemas/CommuteTravelMode"
+          type: array
+        maximumDrivingMinutes:
+          format: int32
+          maximum: 180
+          minimum: 5
+          type: integer
+        maximumTransitMinutes:
+          format: int32
+          maximum: 180
+          minimum: 5
+          type: integer
+        maximumDistanceMiles:
+          format: int32
+          maximum: 500
+          minimum: 0
+          type: integer
+      type: object
+    CommuteTravelMode:
+      enum: [DRIVE, TRANSIT]
+      type: string
+    CommuteAssessment:
+      properties:
+        status:
+          enum: [WITHIN_PREFERENCE, ABOVE_PREFERENCE, UNAVAILABLE, NOT_APPLICABLE, NOT_EVALUATED]
+          type: string
+        workplaceType:
+          $ref: "#/components/schemas/WorkplaceTypeCode"
+        modes:
+          items:
+            $ref: "#/components/schemas/ModeAssessment"
+          type: array
+        bestSuitableMode:
+          $ref: "#/components/schemas/CommuteTravelMode"
+        explanationCode:
+          type: string
+        providerAttribution:
+          type: string
+      type: object
+    ModeAssessment:
+      properties:
+        mode:
+          $ref: "#/components/schemas/CommuteTravelMode"
+        estimateStatus:
+          enum: [ESTIMATED, APPROXIMATE, UNAVAILABLE]
+          type: string
+        durationMinutes:
+          format: int32
+          type: integer
+        distanceMiles:
+          type: number
+        thresholdMinutes:
+          format: int32
+          type: integer
+        outcome:
+          enum: [WITHIN, ABOVE, NO_PREFERENCE, UNAVAILABLE]
+          type: string
+        calculatedFor:
+          format: date-time
+          type: string
+        originPrecision:
+          type: string
+        destinationPrecision:
+          type: string
+        reasonCode:
+          type: string
       type: object
     Job:
       example:
@@ -650,6 +731,8 @@ components:
         matchScore:
           format: double
           type: number
+        commuteAssessment:
+          $ref: "#/components/schemas/CommuteAssessment"
         applicationStatus:
           type: string
         applicationId:
@@ -680,6 +763,8 @@ components:
       type: object
     CanonicalLocation:
       properties:
+        locationId:
+          type: string
         rawDisplayName:
           description: Provider display label retained without normalisation.
           type: string
@@ -716,6 +801,12 @@ components:
           maximum: 1
           minimum: 0
           type: number
+        locationType:
+          type: string
+        precision:
+          type: string
+        confidence:
+          type: string
       required:
       - normalisationStatus
       type: object

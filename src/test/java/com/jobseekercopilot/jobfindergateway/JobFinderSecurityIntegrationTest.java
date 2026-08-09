@@ -726,7 +726,13 @@ class JobFinderSecurityIntegrationTest {
                           "externalJobId": "reed-1",
                           "jobTitle": "Platform Engineer",
                           "companyName": "Example Ltd",
-                          "location": "London"
+                          "location": "London",
+                          "listingUrl": "https://example.test/jobs/reed-1",
+                          "applyUrl": "https://example.test/jobs/reed-1/apply",
+                          "attributionLabel": "Vacancy source: Example",
+                          "attributionSourceUrl": "https://example.test/",
+                          "licenceUrl": "https://example.test/licence",
+                          "disclaimer": "Example does not endorse this service."
                         }
                         """, headers),
                 Map.class);
@@ -750,6 +756,12 @@ class JobFinderSecurityIntegrationTest {
         assertEquals("alice", forwarded.get("userId").asText());
         assertEquals("MANUAL", forwarded.get("provenance").asText());
         assertEquals("SAVED", forwarded.get("initialStatus").asText());
+        assertEquals("https://example.test/jobs/reed-1", forwarded.get("listingUrl").asText());
+        assertEquals("https://example.test/jobs/reed-1/apply", forwarded.get("applyUrl").asText());
+        assertEquals("Vacancy source: Example", forwarded.get("attributionLabel").asText());
+        assertEquals("https://example.test/", forwarded.get("attributionSourceUrl").asText());
+        assertEquals("https://example.test/licence", forwarded.get("licenceUrl").asText());
+        assertEquals("Example does not endorse this service.", forwarded.get("disclaimer").asText());
         assertNull(createCall.userId());
         assertTrue(DOWNSTREAM.applicationCalls().stream().allMatch(call ->
                 call.authorization().equals("Bearer " + token)));

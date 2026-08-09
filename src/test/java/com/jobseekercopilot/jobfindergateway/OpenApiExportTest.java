@@ -31,7 +31,7 @@ class OpenApiExportTest {
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at("/security/0/bearerAuth").isArray());
         org.junit.jupiter.api.Assertions.assertEquals(
-                "1.9.0",
+                "1.10.0",
                 contract.at("/info/version").asText());
         org.junit.jupiter.api.Assertions.assertEquals(
                 1,
@@ -168,6 +168,20 @@ class OpenApiExportTest {
                 contract.at(
                         "/components/schemas/CreateTrackedApplicationRequest/properties/userId")
                         .isMissingNode());
+        for (String sourceField : java.util.List.of(
+                "listingUrl",
+                "applyUrl",
+                "attributionLabel",
+                "attributionSourceUrl",
+                "licenceUrl",
+                "disclaimer")) {
+            org.junit.jupiter.api.Assertions.assertTrue(
+                    contract.at(
+                            "/components/schemas/CreateTrackedApplicationRequest/properties/"
+                                    + sourceField)
+                            .isObject(),
+                    "Missing application source field " + sourceField);
+        }
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at(
                         "/components/schemas/ApplicationRecordResponse/properties/applicationUsedCvDocumentReference")

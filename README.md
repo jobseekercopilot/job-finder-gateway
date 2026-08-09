@@ -1,5 +1,13 @@
 # Job Finder Gateway
 
+## Role in Job Seeker Copilot
+
+| Role | Called by | Calls | Data | Local port |
+|---|---|---|---|---:|
+| JWT-protected facade for job search, saved jobs and application tracking | Client Express BFF | Job Service, User Profile Service, Application Tracker | None | 8080 |
+
+See the central [job-search journey](https://docs.jobseekercopilot.com/journeys/job-search/), [application journey](https://docs.jobseekercopilot.com/journeys/applications/), and [API map](https://docs.jobseekercopilot.com/apis/overview/).
+
 Job Finder Gateway is the authenticated browser-facing boundary for Job Search.
 It accepts search requests from the client BFF and delegates canonical search
 work to Job Service. It exposes Job Service's owner-scoped saved-job operations

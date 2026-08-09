@@ -31,7 +31,7 @@ class OpenApiExportTest {
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at("/security/0/bearerAuth").isArray());
         org.junit.jupiter.api.Assertions.assertEquals(
-                "1.8.0",
+                "1.9.0",
                 contract.at("/info/version").asText());
         org.junit.jupiter.api.Assertions.assertEquals(
                 1,
@@ -62,7 +62,7 @@ class OpenApiExportTest {
                 "aspirations",
                 contract.at("/components/schemas/JobSearchRequest/required/0").asText());
         org.junit.jupiter.api.Assertions.assertEquals(
-                3,
+                5,
                 contract.at(
                         "/components/schemas/JobSearchRequest/properties/selectedProviders/maxItems")
                         .asInt());

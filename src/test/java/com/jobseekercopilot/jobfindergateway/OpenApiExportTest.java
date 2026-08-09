@@ -31,7 +31,7 @@ class OpenApiExportTest {
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at("/security/0/bearerAuth").isArray());
         org.junit.jupiter.api.Assertions.assertEquals(
-                "1.8.0",
+                "1.9.0",
                 contract.at("/info/version").asText());
         org.junit.jupiter.api.Assertions.assertEquals(
                 1,
@@ -194,6 +194,19 @@ class OpenApiExportTest {
                 contract.at(
                         "/components/schemas/DocumentVersionReference/properties/evidenceProvenance")
                         .isObject());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at(
+                        "/components/schemas/DocumentVersionReference/properties/sourceType")
+                        .isObject());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at(
+                        "/components/schemas/DocumentVersionReference/properties/originalContentSha256")
+                        .isObject());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "date-time",
+                contract.at(
+                        "/components/schemas/DocumentVersionReference/properties/selectedAt/format")
+                        .asText());
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at("/components/schemas/SavedJobResponse/properties/savedJobId")
                         .isObject());

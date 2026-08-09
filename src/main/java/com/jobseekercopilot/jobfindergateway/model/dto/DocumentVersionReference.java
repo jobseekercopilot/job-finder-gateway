@@ -1,6 +1,7 @@
 package com.jobseekercopilot.jobfindergateway.model.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Schema(description = "Exact immutable document version and evidence descriptor")
@@ -11,6 +12,9 @@ public record DocumentVersionReference(
         String documentType,
         Integer version,
         String contentSha256,
+        String sourceType,
+        String originalContentSha256,
+        LocalDateTime selectedAt,
         DocumentEvidenceProvenance evidenceProvenance,
         DocumentGroundingState groundingState,
         UUID parentDocumentId,

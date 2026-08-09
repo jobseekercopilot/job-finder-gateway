@@ -22,15 +22,15 @@ done
 
 test "$(wc -l < "$job_source" | tr -d ' ')" = 4
 grep -Fx 'repository=jobseekercopilot/job-service' "$job_source" >/dev/null
-grep -Fx 'revision=1fa6fe2d73f7d86c3bf9cd73bab4a15e005fa80d' "$job_source" >/dev/null
+grep -Fx 'revision=156008c6a400223c192de98a58ffa881d93e3719' "$job_source" >/dev/null
 grep -Fx 'path=api/openapi.yaml' "$job_source" >/dev/null
-grep -Fx 'sha256=7dac4248c0dbb25c1fcc595afcc4550a8a6e04a19c3d64e775cb76984d776bd0' "$job_source" >/dev/null
+grep -Fx 'sha256=dc233e8e62a46c5022dfb074b8567e61b56a4fad0f15e98a57daf3caf1dfa81e' "$job_source" >/dev/null
 
 test "$(wc -l < "$profile_source" | tr -d ' ')" = 4
 grep -Fx 'repository=jobseekercopilot/user-profile-service' "$profile_source" >/dev/null
-grep -Fx 'revision=37b98fbf3cdc5ded8ee645b79eec068fa5684a0e' "$profile_source" >/dev/null
+grep -Fx 'revision=13ced1c7e9138d2259b5251f36c0a419270b8976' "$profile_source" >/dev/null
 grep -Fx 'path=api/openapi.json' "$profile_source" >/dev/null
-grep -Fx 'sha256=ffaaa16a169ab11d864f82440be9fcc7d5df2d4f2d63a3525d40bda497ea6598' "$profile_source" >/dev/null
+grep -Fx 'sha256=f81c90a801ff877930304417be9bc7cdf2c39b2f2c61dc212b43b1cdf72dba75' "$profile_source" >/dev/null
 
 grep -Fx '  /api/jobs/search:' "$job_contract" >/dev/null
 grep -Fx '  /api/jobs/{provider}/{externalJobId}:' "$job_contract" >/dev/null
@@ -60,6 +60,10 @@ for required_field in \
     providerResults \
     searchStatus \
     matchingStatus \
+    commuteAssessment \
+    commuteTravelModes \
+    maximumDrivingMinutes \
+    maximumTransitMinutes \
     canonicalSchemaVersion \
     canonicalJobId \
     employmentTypeCode \

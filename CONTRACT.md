@@ -181,8 +181,9 @@ Exact producer contracts and their source revisions are recorded under
 Generator 7.5.0 during `generate-sources`; generated code and JARs are never
 committed.
 
-The Job Service pin currently consumes contract `2.2.0` at producer revision
-`781017eeb63aaf046d3d3c3cb6f962128d439d1a`. It includes independently
+The Job Service pin currently consumes contract `2.3.0` at producer revision
+`f556702891b02a75ae37f3cdc0639cb067356e44`. It includes official NHS Jobs and
+Find an apprenticeship fields plus independently
 paged target-role results with role-specific totals, provider outcomes,
 `searchStatus` and `matchingStatus`, plus bounded aggregate compatibility
 paging/sorting. It retains the stable provider-result taxonomy, healthy

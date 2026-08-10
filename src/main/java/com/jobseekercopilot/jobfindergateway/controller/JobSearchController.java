@@ -46,6 +46,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -639,6 +640,23 @@ public class JobSearchController {
 
     private List<String> employmentTypes(
             com.jobseekercopilot.generated.userprofileservice.model.UserProfile profile) {
+        var preferences = profile.getWorkPreferences();
+        Set<String> mapped = new LinkedHashSet<>();
+        if (preferences != null && preferences.getEmploymentTypes() != null) {
+            preferences.getEmploymentTypes().stream()
+                    .map(Enum::name)
+                    .filter(value -> value.equals("CONTRACT") || value.equals("TEMPORARY"))
+                    .forEach(mapped::add);
+        }
+        if (preferences != null && preferences.getWorkingPatterns() != null) {
+            preferences.getWorkingPatterns().stream()
+                    .map(Enum::name)
+                    .filter(value -> value.equals("FULL_TIME") || value.equals("PART_TIME"))
+                    .forEach(mapped::add);
+        }
+        if (!mapped.isEmpty()) {
+            return List.copyOf(mapped);
+        }
         if (profile.getAspirations() == null
                 || profile.getAspirations().getTargetWeeklyHours() == null) {
             return List.of();

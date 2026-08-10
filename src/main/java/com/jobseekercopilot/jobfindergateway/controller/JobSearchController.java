@@ -48,6 +48,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -297,6 +298,12 @@ public class JobSearchController {
         if (request.location() != null && !request.location().isBlank()) {
             trackerRequest.put("location", request.location());
         }
+        putIfNotBlank(trackerRequest, "listingUrl", request.listingUrl());
+        putIfNotBlank(trackerRequest, "applyUrl", request.applyUrl());
+        putIfNotBlank(trackerRequest, "attributionLabel", request.attributionLabel());
+        putIfNotBlank(trackerRequest, "attributionSourceUrl", request.attributionSourceUrl());
+        putIfNotBlank(trackerRequest, "licenceUrl", request.licenceUrl());
+        putIfNotBlank(trackerRequest, "disclaimer", request.disclaimer());
         trackerRequest.put("provenance", "MANUAL");
         trackerRequest.put("initialStatus", "SAVED");
 
@@ -331,6 +338,12 @@ public class JobSearchController {
                     e.getClass().getSimpleName(),
                     e);
             return applicationTrackerFailure(e);
+        }
+    }
+
+    private void putIfNotBlank(Map<String, Object> target, String key, String value) {
+        if (value != null && !value.isBlank()) {
+            target.put(key, value);
         }
     }
 

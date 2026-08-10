@@ -25,6 +25,18 @@ public record CreateTrackedApplicationRequest(
         @Size(max = 300)
         String companyName,
         @Size(max = 300)
-        String location
+        String location,
+        @Size(max = 2048)
+        String listingUrl,
+        @Size(max = 2048)
+        String applyUrl,
+        @Size(max = 255)
+        String attributionLabel,
+        @Size(max = 2048)
+        String attributionSourceUrl,
+        @Size(max = 2048)
+        String licenceUrl,
+        @Size(max = 1000)
+        String disclaimer
 ) {
 }

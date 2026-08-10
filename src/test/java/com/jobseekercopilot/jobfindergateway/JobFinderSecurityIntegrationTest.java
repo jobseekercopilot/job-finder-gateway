@@ -675,6 +675,21 @@ class JobFinderSecurityIntegrationTest {
                         .at("/0/cvDocumentReference/evidenceProvenance/profileRevisionId")
                         .asText());
         assertEquals(
+                "UPLOADED",
+                objectMapper.valueToTree(response.getBody())
+                        .at("/0/cvDocumentReference/sourceType")
+                        .asText());
+        assertEquals(
+                "abababababababababababababababababababababababababababababababab",
+                objectMapper.valueToTree(response.getBody())
+                        .at("/0/cvDocumentReference/originalContentSha256")
+                        .asText());
+        assertEquals(
+                "2026-07-29T03:01:00",
+                objectMapper.valueToTree(response.getBody())
+                        .at("/0/cvDocumentReference/selectedAt")
+                        .asText());
+        assertEquals(
                 "44444444-4444-4444-8444-444444444444",
                 objectMapper.valueToTree(response.getBody())
                         .at("/0/cvDocumentReference/evidenceProvenance/evidenceSnapshotId")
@@ -1242,6 +1257,9 @@ class JobFinderSecurityIntegrationTest {
                         "documentType": "CV",
                         "version": 1,
                         "contentSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                        "sourceType": "UPLOADED",
+                        "originalContentSha256": "abababababababababababababababababababababababababababababababab",
+                        "selectedAt": "2026-07-29T03:01:00",
                         "groundingState": "AI_GENERATED_EVIDENCE_VALIDATED",
                         "evidenceProvenance": {
                           "profileRevisionId": "33333333-3333-4333-8333-333333333333",

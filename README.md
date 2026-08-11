@@ -15,7 +15,7 @@ so the browser can exchange a selected canonical result for a stable
 `savedJobId`. It also contains application-tracker proxy endpoints; those
 dependencies are integration boundaries, not owned implementations.
 
-Status: **beta hardening in progress; not yet beta-ready**. Reproducible
+Status: **implemented and composed for controlled private-beta use**. Reproducible
 generated clients, the Job Search authentication boundary, and Job Finder's
 application-proxy ownership checks are implemented. Atomic Application Tracker
 ownership, validation, and timeout issues are recorded in

@@ -452,6 +452,46 @@ class JobFinderSecurityIntegrationTest {
     }
 
     @Test
+    void profileSearchPropagatesCurrentStructuredWorkAndCommutePreferences() throws Exception {
+        DOWNSTREAM.setProfileBody("""
+                {
+                  "skills":["Planning"],
+                  "qualifications":[],
+                  "roles":[],
+                  "aspirations":{"targetRoles":["Project Coordinator"],"targetWeeklyHours":"FULL_TIME"},
+                  "workPreferences":{
+                    "location":{"locationId":"10000000-0000-0000-0000-000000000001","displayName":"Bristol","countryCode":"GB","postcode":"BS1 1AA","region":"South West","adminDistrict":"Bristol","latitude":51.4545,"longitude":-2.5879,"precision":"POSTCODE_CENTROID","confidence":"VERIFIED"},
+                    "commuteRange":25,
+                    "commuteTravelModes":["DRIVE","TRANSIT"],
+                    "maximumDrivingMinutes":45,
+                    "maximumTransitMinutes":60,
+                    "employmentTypes":["PERMANENT","CONTRACT","TEMPORARY"],
+                    "workingPatterns":["PART_TIME","FLEXIBLE"],
+                    "workplaceArrangements":["HYBRID","REMOTE"]
+                  }
+                }
+                """);
+
+        ResponseEntity<Map> response = restTemplate.exchange(
+                "/api/jobs/search",
+                HttpMethod.POST,
+                new HttpEntity<>(authenticated(JWKS.validToken("structured-profile"))),
+                Map.class);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        JsonNode forwarded = objectMapper.readTree(DOWNSTREAM.jobBody());
+        assertEquals(List.of("CONTRACT", "TEMPORARY", "PART_TIME"),
+                objectMapper.convertValue(forwarded.at("/workPreferences/employmentType"), List.class));
+        assertEquals(List.of("DRIVE", "TRANSIT"),
+                objectMapper.convertValue(forwarded.at("/workPreferences/commuteTravelModes"), List.class));
+        assertEquals(45, forwarded.at("/workPreferences/maximumDrivingMinutes").asInt());
+        assertEquals(60, forwarded.at("/workPreferences/maximumTransitMinutes").asInt());
+        assertEquals(25, forwarded.at("/workPreferences/maximumDistanceMiles").asInt());
+        assertEquals(List.of("HYBRID", "REMOTE"),
+                objectMapper.convertValue(forwarded.at("/workPreferences/workplaceArrangements"), List.class));
+    }
+
+    @Test
     void profileTimeoutExhaustsTheSharedBudgetWithoutStartingJobSearch() {
         DOWNSTREAM.setProfileDelayMs(900);
         HttpHeaders headers = authenticated(JWKS.validToken("slow-profile"));
@@ -786,8 +826,8 @@ class JobFinderSecurityIntegrationTest {
     void statusUpdateDeniesForeignAndUnknownIdsWithoutEnumeration() {
         String token = JWKS.validToken("alice");
         HttpEntity<String> request = new HttpEntity<>(
-                "{\"status\":\"APPLIED\"}",
-                authenticated(token));
+                "{\"status\":\"APPLIED\",\"expectedVersion\":2}",
+                appliedHeaders(token, "browser-foreign-check"));
 
         ResponseEntity<Map> foreign = restTemplate.exchange(
                 "/api/jobs/applications/" + FOREIGN_APPLICATION + "/status",
@@ -814,13 +854,52 @@ class JobFinderSecurityIntegrationTest {
     }
 
     @Test
-    void ownedStatusAndWithdrawForwardBearerWithoutDuplicatingTrackerCleanup() {
+    void ownedAppliedStatusRequiresAReplaySafeCommandKey() {
         String token = JWKS.validToken("alice");
 
         ResponseEntity<Map> status = restTemplate.exchange(
                 "/api/jobs/applications/" + OWNED_APPLICATION + "/status",
                 HttpMethod.PATCH,
-                new HttpEntity<>("{\"status\":\"applied\"}", authenticated(token)),
+                new HttpEntity<>(
+                        "{\"status\":\"applied\",\"expectedVersion\":2}",
+                        authenticated(token)),
+                Map.class);
+
+        assertEquals(HttpStatus.BAD_REQUEST, status.getStatusCode());
+        assertEquals("JOB_FINDER_INVALID_IDEMPOTENCY_KEY", status.getBody().get("code"));
+        assertFalse(DOWNSTREAM.applicationCalls().stream().anyMatch(call ->
+                call.method().equals("PATCH")));
+    }
+
+    @Test
+    void ownedAppliedStatusRequiresTheObservedApplicationVersion() {
+        String token = JWKS.validToken("alice");
+
+        ResponseEntity<Map> status = restTemplate.exchange(
+                "/api/jobs/applications/" + OWNED_APPLICATION + "/status",
+                HttpMethod.PATCH,
+                new HttpEntity<>(
+                        "{\"status\":\"applied\"}",
+                        appliedHeaders(token, "browser-missing-version")),
+                Map.class);
+
+        assertEquals(HttpStatus.BAD_REQUEST, status.getStatusCode());
+        assertEquals("JOB_FINDER_INVALID_EXPECTED_VERSION", status.getBody().get("code"));
+        assertFalse(DOWNSTREAM.applicationCalls().stream().anyMatch(call ->
+                call.method().equals("PATCH")));
+    }
+
+    @Test
+    void ownedStatusAndWithdrawForwardBearerWithoutDuplicatingTrackerCleanup() {
+        String token = JWKS.validToken("alice");
+        String idempotencyKey = "browser-apply-1";
+
+        ResponseEntity<Map> status = restTemplate.exchange(
+                "/api/jobs/applications/" + OWNED_APPLICATION + "/status",
+                HttpMethod.PATCH,
+                new HttpEntity<>(
+                        "{\"status\":\"applied\",\"expectedVersion\":2}",
+                        appliedHeaders(token, idempotencyKey)),
                 Map.class);
         ResponseEntity<Map> withdraw = restTemplate.exchange(
                 "/api/jobs/applications/" + OWNED_APPLICATION + "/withdraw-generated",
@@ -836,7 +915,9 @@ class JobFinderSecurityIntegrationTest {
         assertTrue(DOWNSTREAM.applicationCalls().stream().anyMatch(call ->
                 call.method().equals("PATCH")
                         && call.path().endsWith("/status")
-                        && call.body().contains("\"status\":\"APPLIED\"")));
+                        && idempotencyKey.equals(call.idempotencyKey())
+                        && call.body().contains("\"status\":\"APPLIED\"")
+                        && call.body().contains("\"expectedVersion\":2")));
         assertTrue(DOWNSTREAM.applicationCalls().stream().anyMatch(call ->
                 call.method().equals("POST")
                         && call.path().endsWith("/withdraw-generated")));
@@ -919,6 +1000,12 @@ class JobFinderSecurityIntegrationTest {
         return headers;
     }
 
+    private static HttpHeaders appliedHeaders(String token, String idempotencyKey) {
+        HttpHeaders headers = authenticated(token);
+        headers.set("Idempotency-Key", idempotencyKey);
+        return headers;
+    }
+
     private static String canonicalJob() {
         return """
                 {
@@ -948,6 +1035,7 @@ class JobFinderSecurityIntegrationTest {
 
         private final AtomicReference<String> profileAuthorization = new AtomicReference<>();
         private final AtomicReference<String> profileCorrelationId = new AtomicReference<>();
+        private final AtomicReference<String> profileBody = new AtomicReference<>("{}");
         private final AtomicReference<String> jobAuthorization = new AtomicReference<>();
         private final AtomicReference<String> jobCorrelationId = new AtomicReference<>();
         private final AtomicReference<String> jobUserId = new AtomicReference<>();
@@ -987,7 +1075,7 @@ class JobFinderSecurityIntegrationTest {
             profileCorrelationId.set(
                     exchange.getRequestHeaders().getFirst("X-Correlation-Id"));
             delay(profileDelayMs.get());
-            respond(exchange, 200, "{}");
+            respond(exchange, 200, profileBody.get());
         }
 
         private void jobs(HttpExchange exchange) throws IOException {
@@ -1232,6 +1320,7 @@ class JobFinderSecurityIntegrationTest {
                     exchange.getRequestURI().getPath(),
                     exchange.getRequestHeaders().getFirst("Authorization"),
                     exchange.getRequestHeaders().getFirst("X-User-Id"),
+                    exchange.getRequestHeaders().getFirst("Idempotency-Key"),
                     new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
         }
 
@@ -1349,6 +1438,7 @@ class JobFinderSecurityIntegrationTest {
         void reset() {
             profileAuthorization.set(null);
             profileCorrelationId.set(null);
+            profileBody.set("{}");
             jobAuthorization.set(null);
             jobCorrelationId.set(null);
             jobUserId.set(null);
@@ -1379,6 +1469,10 @@ class JobFinderSecurityIntegrationTest {
 
         void setProfileDelayMs(long milliseconds) {
             profileDelayMs.set(milliseconds);
+        }
+
+        void setProfileBody(String body) {
+            profileBody.set(body);
         }
 
         void setMalformedJobResponse(boolean malformed) {
@@ -1419,6 +1513,7 @@ class JobFinderSecurityIntegrationTest {
             String path,
             String authorization,
             String userId,
+            String idempotencyKey,
             String body) {
     }
 }

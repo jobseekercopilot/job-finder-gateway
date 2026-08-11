@@ -36,6 +36,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.HttpStatusCodeException;
@@ -46,11 +47,13 @@ import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @RestController
 @RequestMapping("/api/jobs")
@@ -58,6 +61,9 @@ import java.util.UUID;
 public class JobSearchController {
 
     private static final Logger log = LoggerFactory.getLogger(JobSearchController.class);
+    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+    private static final Pattern IDEMPOTENCY_KEY =
+            Pattern.compile("[A-Za-z0-9][A-Za-z0-9._:-]{0,127}");
     private final UserProfileClientFactory userProfileClientFactory;
     private final JobServiceClientFactory jobServiceClientFactory;
     private final ObjectMapper objectMapper;
@@ -447,7 +453,15 @@ public class JobSearchController {
     public ResponseEntity<?> updateApplicationStatus(
             @AuthenticationPrincipal Jwt accessToken,
             @Parameter(description = "Application tracker record ID") @PathVariable UUID applicationId,
-            @Parameter(description = "Status update request") @jakarta.validation.Valid @RequestBody UpdateApplicationStatusRequest request) {
+            @Parameter(description = "Status update request") @jakarta.validation.Valid @RequestBody UpdateApplicationStatusRequest request,
+            @Parameter(
+                    description = "Required replay-safe command key when status is APPLIED",
+                    schema = @Schema(
+                            minLength = 1,
+                            maxLength = 128,
+                            pattern = "[A-Za-z0-9][A-Za-z0-9._:-]{0,127}"))
+            @RequestHeader(value = IDEMPOTENCY_KEY_HEADER, required = false)
+            String idempotencyKey) {
         long startedAt = System.nanoTime();
         String normalizedStatus = request.status().toUpperCase(Locale.ROOT);
         if (!supportedStatuses().contains(normalizedStatus)) {
@@ -459,16 +473,36 @@ public class JobSearchController {
                             "JOB_FINDER_INVALID_APPLICATION_STATUS",
                             "The application status is not supported."));
         }
+        if ("APPLIED".equals(normalizedStatus)
+                && (idempotencyKey == null
+                || !IDEMPOTENCY_KEY.matcher(idempotencyKey).matches())) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(apiError(
+                            "JOB_FINDER_INVALID_IDEMPOTENCY_KEY",
+                            "A valid Idempotency-Key is required when marking an application applied."));
+        }
+        if ("APPLIED".equals(normalizedStatus) && request.expectedVersion() == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(apiError(
+                            "JOB_FINDER_INVALID_EXPECTED_VERSION",
+                            "The current application version is required when marking an application applied."));
+        }
 
         try {
             requireOwnedApplication(accessToken, applicationId);
             log.info("Calling application-tracker-service status update status={}", normalizedStatus);
+            HttpHeaders downstreamHeaders = authenticatedHeaders(accessToken);
+            if ("APPLIED".equals(normalizedStatus)) {
+                downstreamHeaders.set(IDEMPOTENCY_KEY_HEADER, idempotencyKey);
+            }
             ResponseEntity<Object> response = restTemplate.exchange(
                     applicationTrackerBaseUrl + "/api/v1/applications/" + applicationId + "/status",
                     org.springframework.http.HttpMethod.PATCH,
                     new HttpEntity<>(
-                            new UpdateApplicationStatusRequest(normalizedStatus),
-                            authenticatedHeaders(accessToken)),
+                            new UpdateApplicationStatusRequest(
+                                    normalizedStatus,
+                                    request.expectedVersion()),
+                            downstreamHeaders),
                     Object.class);
             ApplicationRecordResponse updated =
                     objectMapper.convertValue(response.getBody(), ApplicationRecordResponse.class);
@@ -639,6 +673,23 @@ public class JobSearchController {
 
     private List<String> employmentTypes(
             com.jobseekercopilot.generated.userprofileservice.model.UserProfile profile) {
+        var preferences = profile.getWorkPreferences();
+        Set<String> mapped = new LinkedHashSet<>();
+        if (preferences != null && preferences.getEmploymentTypes() != null) {
+            preferences.getEmploymentTypes().stream()
+                    .map(Enum::name)
+                    .filter(value -> value.equals("CONTRACT") || value.equals("TEMPORARY"))
+                    .forEach(mapped::add);
+        }
+        if (preferences != null && preferences.getWorkingPatterns() != null) {
+            preferences.getWorkingPatterns().stream()
+                    .map(Enum::name)
+                    .filter(value -> value.equals("FULL_TIME") || value.equals("PART_TIME"))
+                    .forEach(mapped::add);
+        }
+        if (!mapped.isEmpty()) {
+            return List.copyOf(mapped);
+        }
         if (profile.getAspirations() == null
                 || profile.getAspirations().getTargetWeeklyHours() == null) {
             return List.of();

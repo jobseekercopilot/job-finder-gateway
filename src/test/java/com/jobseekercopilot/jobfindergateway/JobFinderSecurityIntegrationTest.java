@@ -827,7 +827,7 @@ class JobFinderSecurityIntegrationTest {
         String token = JWKS.validToken("alice");
         HttpEntity<String> request = new HttpEntity<>(
                 "{\"status\":\"APPLIED\"}",
-                authenticated(token));
+                appliedHeaders(token, "browser-foreign-check"));
 
         ResponseEntity<Map> foreign = restTemplate.exchange(
                 "/api/jobs/applications/" + FOREIGN_APPLICATION + "/status",
@@ -854,13 +854,32 @@ class JobFinderSecurityIntegrationTest {
     }
 
     @Test
-    void ownedStatusAndWithdrawForwardBearerWithoutDuplicatingTrackerCleanup() {
+    void ownedAppliedStatusRequiresAReplaySafeCommandKey() {
         String token = JWKS.validToken("alice");
 
         ResponseEntity<Map> status = restTemplate.exchange(
                 "/api/jobs/applications/" + OWNED_APPLICATION + "/status",
                 HttpMethod.PATCH,
                 new HttpEntity<>("{\"status\":\"applied\"}", authenticated(token)),
+                Map.class);
+
+        assertEquals(HttpStatus.BAD_REQUEST, status.getStatusCode());
+        assertEquals("JOB_FINDER_INVALID_IDEMPOTENCY_KEY", status.getBody().get("code"));
+        assertFalse(DOWNSTREAM.applicationCalls().stream().anyMatch(call ->
+                call.method().equals("PATCH")));
+    }
+
+    @Test
+    void ownedStatusAndWithdrawForwardBearerWithoutDuplicatingTrackerCleanup() {
+        String token = JWKS.validToken("alice");
+        String idempotencyKey = "browser-apply-1";
+
+        ResponseEntity<Map> status = restTemplate.exchange(
+                "/api/jobs/applications/" + OWNED_APPLICATION + "/status",
+                HttpMethod.PATCH,
+                new HttpEntity<>(
+                        "{\"status\":\"applied\"}",
+                        appliedHeaders(token, idempotencyKey)),
                 Map.class);
         ResponseEntity<Map> withdraw = restTemplate.exchange(
                 "/api/jobs/applications/" + OWNED_APPLICATION + "/withdraw-generated",
@@ -876,6 +895,7 @@ class JobFinderSecurityIntegrationTest {
         assertTrue(DOWNSTREAM.applicationCalls().stream().anyMatch(call ->
                 call.method().equals("PATCH")
                         && call.path().endsWith("/status")
+                        && idempotencyKey.equals(call.idempotencyKey())
                         && call.body().contains("\"status\":\"APPLIED\"")));
         assertTrue(DOWNSTREAM.applicationCalls().stream().anyMatch(call ->
                 call.method().equals("POST")
@@ -956,6 +976,12 @@ class JobFinderSecurityIntegrationTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
+        return headers;
+    }
+
+    private static HttpHeaders appliedHeaders(String token, String idempotencyKey) {
+        HttpHeaders headers = authenticated(token);
+        headers.set("Idempotency-Key", idempotencyKey);
         return headers;
     }
 
@@ -1273,6 +1299,7 @@ class JobFinderSecurityIntegrationTest {
                     exchange.getRequestURI().getPath(),
                     exchange.getRequestHeaders().getFirst("Authorization"),
                     exchange.getRequestHeaders().getFirst("X-User-Id"),
+                    exchange.getRequestHeaders().getFirst("Idempotency-Key"),
                     new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
         }
 
@@ -1465,6 +1492,7 @@ class JobFinderSecurityIntegrationTest {
             String path,
             String authorization,
             String userId,
+            String idempotencyKey,
             String body) {
     }
 }

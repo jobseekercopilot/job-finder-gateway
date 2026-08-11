@@ -31,7 +31,7 @@ class OpenApiExportTest {
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at("/security/0/bearerAuth").isArray());
         org.junit.jupiter.api.Assertions.assertEquals(
-                "1.11.0",
+                "1.12.0",
                 contract.at("/info/version").asText());
         org.junit.jupiter.api.Assertions.assertEquals(
                 1,
@@ -213,6 +213,11 @@ class OpenApiExportTest {
                 128,
                 contract.at(
                         "/paths/~1api~1jobs~1applications~1{applicationId}~1status/patch/parameters/1/schema/maxLength")
+                        .asInt());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                0,
+                contract.at(
+                        "/components/schemas/UpdateApplicationStatusRequest/properties/expectedVersion/minimum")
                         .asInt());
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at(

@@ -481,6 +481,12 @@ public class JobSearchController {
                             "JOB_FINDER_INVALID_IDEMPOTENCY_KEY",
                             "A valid Idempotency-Key is required when marking an application applied."));
         }
+        if ("APPLIED".equals(normalizedStatus) && request.expectedVersion() == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(apiError(
+                            "JOB_FINDER_INVALID_EXPECTED_VERSION",
+                            "The current application version is required when marking an application applied."));
+        }
 
         try {
             requireOwnedApplication(accessToken, applicationId);
@@ -493,7 +499,9 @@ public class JobSearchController {
                     applicationTrackerBaseUrl + "/api/v1/applications/" + applicationId + "/status",
                     org.springframework.http.HttpMethod.PATCH,
                     new HttpEntity<>(
-                            new UpdateApplicationStatusRequest(normalizedStatus),
+                            new UpdateApplicationStatusRequest(
+                                    normalizedStatus,
+                                    request.expectedVersion()),
                             downstreamHeaders),
                     Object.class);
             ApplicationRecordResponse updated =

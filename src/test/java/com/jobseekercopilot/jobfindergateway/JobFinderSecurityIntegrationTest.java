@@ -826,7 +826,7 @@ class JobFinderSecurityIntegrationTest {
     void statusUpdateDeniesForeignAndUnknownIdsWithoutEnumeration() {
         String token = JWKS.validToken("alice");
         HttpEntity<String> request = new HttpEntity<>(
-                "{\"status\":\"APPLIED\"}",
+                "{\"status\":\"APPLIED\",\"expectedVersion\":2}",
                 appliedHeaders(token, "browser-foreign-check"));
 
         ResponseEntity<Map> foreign = restTemplate.exchange(
@@ -860,11 +860,31 @@ class JobFinderSecurityIntegrationTest {
         ResponseEntity<Map> status = restTemplate.exchange(
                 "/api/jobs/applications/" + OWNED_APPLICATION + "/status",
                 HttpMethod.PATCH,
-                new HttpEntity<>("{\"status\":\"applied\"}", authenticated(token)),
+                new HttpEntity<>(
+                        "{\"status\":\"applied\",\"expectedVersion\":2}",
+                        authenticated(token)),
                 Map.class);
 
         assertEquals(HttpStatus.BAD_REQUEST, status.getStatusCode());
         assertEquals("JOB_FINDER_INVALID_IDEMPOTENCY_KEY", status.getBody().get("code"));
+        assertFalse(DOWNSTREAM.applicationCalls().stream().anyMatch(call ->
+                call.method().equals("PATCH")));
+    }
+
+    @Test
+    void ownedAppliedStatusRequiresTheObservedApplicationVersion() {
+        String token = JWKS.validToken("alice");
+
+        ResponseEntity<Map> status = restTemplate.exchange(
+                "/api/jobs/applications/" + OWNED_APPLICATION + "/status",
+                HttpMethod.PATCH,
+                new HttpEntity<>(
+                        "{\"status\":\"applied\"}",
+                        appliedHeaders(token, "browser-missing-version")),
+                Map.class);
+
+        assertEquals(HttpStatus.BAD_REQUEST, status.getStatusCode());
+        assertEquals("JOB_FINDER_INVALID_EXPECTED_VERSION", status.getBody().get("code"));
         assertFalse(DOWNSTREAM.applicationCalls().stream().anyMatch(call ->
                 call.method().equals("PATCH")));
     }
@@ -878,7 +898,7 @@ class JobFinderSecurityIntegrationTest {
                 "/api/jobs/applications/" + OWNED_APPLICATION + "/status",
                 HttpMethod.PATCH,
                 new HttpEntity<>(
-                        "{\"status\":\"applied\"}",
+                        "{\"status\":\"applied\",\"expectedVersion\":2}",
                         appliedHeaders(token, idempotencyKey)),
                 Map.class);
         ResponseEntity<Map> withdraw = restTemplate.exchange(
@@ -896,7 +916,8 @@ class JobFinderSecurityIntegrationTest {
                 call.method().equals("PATCH")
                         && call.path().endsWith("/status")
                         && idempotencyKey.equals(call.idempotencyKey())
-                        && call.body().contains("\"status\":\"APPLIED\"")));
+                        && call.body().contains("\"status\":\"APPLIED\"")
+                        && call.body().contains("\"expectedVersion\":2")));
         assertTrue(DOWNSTREAM.applicationCalls().stream().anyMatch(call ->
                 call.method().equals("POST")
                         && call.path().endsWith("/withdraw-generated")));

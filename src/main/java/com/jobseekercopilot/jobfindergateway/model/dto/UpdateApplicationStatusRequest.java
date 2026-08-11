@@ -2,6 +2,7 @@ package com.jobseekercopilot.jobfindergateway.model.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.PositiveOrZero;
 
 public record UpdateApplicationStatusRequest(
         @NotBlank(message = "status is required")
@@ -20,6 +21,12 @@ public record UpdateApplicationStatusRequest(
                 },
                 requiredMode = Schema.RequiredMode.REQUIRED
         )
-        String status
+        String status,
+        @PositiveOrZero(message = "expectedVersion must be zero or greater")
+        @Schema(
+                description = "Record version last observed by the caller; required when status is APPLIED",
+                example = "3",
+                minimum = "0")
+        Long expectedVersion
 ) {
 }

@@ -75,7 +75,10 @@ class JobFinderSecurityIntegrationTest {
         registry.add("job-finder.downstream.connect-timeout-ms", () -> 100);
         registry.add("job-finder.downstream.connection-request-timeout-ms", () -> 100);
         registry.add("job-finder.downstream.response-timeout-ms", () -> 500);
-        registry.add("job-finder.downstream.request-deadline-ms", () -> 700);
+        // Explicit searches now read both profile and confirmed evidence before
+        // calling Job Service. Keep the shared test budget bounded but large
+        // enough for all three local HTTP hops under CI load.
+        registry.add("job-finder.downstream.request-deadline-ms", () -> 1200);
     }
 
     @AfterAll
@@ -204,7 +207,8 @@ class JobFinderSecurityIntegrationTest {
         assertEquals(
                 "NEWEST_POSTED",
                 objectMapper.valueToTree(response.getBody()).at("/sort").asText());
-        assertNull(DOWNSTREAM.profileAuthorization());
+        assertEquals("Bearer " + token, DOWNSTREAM.profileAuthorization());
+        assertEquals("Bearer " + token, DOWNSTREAM.evidenceAuthorization());
     }
 
     @Test
@@ -455,9 +459,22 @@ class JobFinderSecurityIntegrationTest {
     void profileSearchPropagatesCurrentStructuredWorkAndCommutePreferences() throws Exception {
         DOWNSTREAM.setProfileBody("""
                 {
-                  "skills":["Planning"],
-                  "qualifications":[],
-                  "roles":[],
+                  "skills":["Planning","Java"],
+                  "qualifications":[{
+                    "qualificationName":"BA Music",
+                    "issuingBody":"Private University Name",
+                    "status":"COMPLETED",
+                    "grade":"First",
+                    "dateAchieved":"2018-07"
+                  }],
+                  "roles":[{
+                    "jobTitle":"Software Developer",
+                    "employer":"Private Employer Name",
+                    "status":"PREVIOUS_ROLE",
+                    "startDate":"2021-03",
+                    "endDate":"2024-09",
+                    "keyResponsibilities":"Private role detail"
+                  }],
                   "aspirations":{"targetRoles":["Project Coordinator"],"targetWeeklyHours":"FULL_TIME"},
                   "workPreferences":{
                     "location":{"locationId":"10000000-0000-0000-0000-000000000001","displayName":"Bristol","countryCode":"GB","postcode":"BS1 1AA","region":"South West","adminDistrict":"Bristol","latitude":51.4545,"longitude":-2.5879,"precision":"POSTCODE_CENTROID","confidence":"VERIFIED"},
@@ -471,6 +488,7 @@ class JobFinderSecurityIntegrationTest {
                   }
                 }
                 """);
+        DOWNSTREAM.setEvidenceBody(confirmedEvidence());
 
         ResponseEntity<Map> response = restTemplate.exchange(
                 "/api/jobs/search",
@@ -489,6 +507,108 @@ class JobFinderSecurityIntegrationTest {
         assertEquals(25, forwarded.at("/workPreferences/maximumDistanceMiles").asInt());
         assertEquals(List.of("HYBRID", "REMOTE"),
                 objectMapper.convertValue(forwarded.at("/workPreferences/workplaceArrangements"), List.class));
+        assertEquals(List.of("Planning", "Java", "TypeScript"),
+                objectMapper.convertValue(forwarded.at("/candidateProfile/skills"), List.class));
+        assertEquals("Software Developer",
+                forwarded.at("/candidateProfile/roles/0/jobTitle").asText());
+        assertEquals("2021-03",
+                forwarded.at("/candidateProfile/roles/0/startDate").asText());
+        assertEquals("2024-09",
+                forwarded.at("/candidateProfile/roles/0/endDate").asText());
+        assertTrue(forwarded.at("/candidateProfile/roles/0/employer").isMissingNode());
+        assertTrue(forwarded.at("/candidateProfile/roles/0/keyResponsibilities").isMissingNode());
+        assertEquals("BA Music",
+                forwarded.at("/candidateProfile/qualifications/0/qualificationName").asText());
+        assertEquals("COMPLETED",
+                forwarded.at("/candidateProfile/qualifications/0/status").asText());
+        assertEquals("2018-07",
+                forwarded.at("/candidateProfile/qualifications/0/dateAchieved").asText());
+        assertEquals("AWS Cloud Practitioner",
+                forwarded.at("/candidateProfile/qualifications/1/qualificationName").asText());
+        assertEquals("2025-06",
+                forwarded.at("/candidateProfile/qualifications/1/dateAchieved").asText());
+        assertTrue(forwarded.at("/candidateProfile/qualifications/0/issuingBody").isMissingNode());
+        assertTrue(forwarded.at("/candidateProfile/qualifications/0/grade").isMissingNode());
+        assertEquals(1, forwarded.at("/candidateProfile/roles").size());
+    }
+
+    @Test
+    void explicitBrowserSearchUsesOnlyOwnerConfirmedEvidenceAndIgnoresFabricatedCandidateProfile()
+            throws Exception {
+        String token = JWKS.validToken("owner-evidence-search");
+        DOWNSTREAM.setProfileBody("""
+                {
+                  "skills":["Planning","Java"],
+                  "aspirations":{"targetRoles":["Software Developer"]}
+                }
+                """);
+        DOWNSTREAM.setEvidenceBody(confirmedEvidence());
+
+        ResponseEntity<Map> response = search(authenticated(token), """
+                {
+                  "aspirations": {
+                    "desiredRoles": ["Software Developer"],
+                    "locations": ["London"]
+                  },
+                  "candidateProfile": {
+                    "skills": ["Fabricated Root Access"],
+                    "roles": [{
+                      "jobTitle": "Fabricated Principal Engineer",
+                      "status": "CURRENT",
+                      "startDate": "2010-01"
+                    }],
+                    "qualifications": [{
+                      "qualificationName": "Fabricated PhD",
+                      "status": "COMPLETED"
+                    }]
+                  }
+                }
+                """);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals("Bearer " + token, DOWNSTREAM.profileAuthorization());
+        assertEquals("Bearer " + token, DOWNSTREAM.evidenceAuthorization());
+        JsonNode forwarded = objectMapper.readTree(DOWNSTREAM.jobBody());
+        assertEquals(List.of("Planning", "Java", "TypeScript"),
+                objectMapper.convertValue(
+                        forwarded.at("/candidateProfile/skills"), List.class));
+        assertEquals("Software Developer",
+                forwarded.at("/candidateProfile/roles/0/jobTitle").asText());
+        assertEquals("BA Music",
+                forwarded.at("/candidateProfile/qualifications/0/qualificationName").asText());
+        assertFalse(DOWNSTREAM.jobBody().contains("Fabricated"));
+        assertFalse(DOWNSTREAM.jobBody().contains("Private Employer Name"));
+        assertFalse(DOWNSTREAM.jobBody().contains("Private role detail"));
+        assertFalse(DOWNSTREAM.jobBody().contains("Private University Name"));
+        assertFalse(DOWNSTREAM.jobBody().contains("Private Training Issuer"));
+        assertFalse(DOWNSTREAM.jobBody().contains("2:1"));
+        assertFalse(DOWNSTREAM.jobBody().contains("Merit"));
+        assertFalse(DOWNSTREAM.jobBody().contains("Private degree narrative"));
+        assertFalse(DOWNSTREAM.jobBody().contains("private-secret"));
+    }
+
+    @Test
+    void explicitSearchFallsBackToTitleOnlyWhenOwnerProfileCannotBeRead()
+            throws Exception {
+        DOWNSTREAM.setProfileBody("{\"skills\":");
+
+        ResponseEntity<Map> response = search(
+                authenticated(JWKS.validToken("profile-degraded-search")),
+                """
+                {
+                  "aspirations": {
+                    "desiredRoles": ["Platform Engineer"],
+                    "locations": ["London"]
+                  }
+                }
+                """);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        JsonNode forwarded = objectMapper.readTree(DOWNSTREAM.jobBody());
+        assertTrue(forwarded.at("/candidateProfile").isMissingNode()
+                || forwarded.at("/candidateProfile").isNull());
+        assertEquals("Platform Engineer",
+                forwarded.at("/aspirations/desiredRoles/0").asText());
     }
 
     @Test
@@ -1031,11 +1151,109 @@ class JobFinderSecurityIntegrationTest {
                 """;
     }
 
+    private static String confirmedEvidence() {
+        return """
+                [{
+                  "category":"EMPLOYMENT",
+                  "visibility":"VISIBLE",
+                  "lifecycle":"ACTIVE",
+                  "reviewRequired":false,
+                  "revisions":[{
+                    "revisionNumber":1,
+                    "confirmationState":"USER_CONFIRMED",
+                    "roleTitle":"Software Developer",
+                    "organisationContext":"Private Employer Name",
+                    "description":"Private role detail",
+                    "privateCredentialIdentifier":"private-secret",
+                    "ongoing":false,
+                    "startDate":{"precision":"MONTH","year":2021,"month":3},
+                    "endDate":{"precision":"MONTH","year":2024,"month":9},
+                    "demonstratedSkills":["Java"]
+                  }]
+                }, {
+                  "category":"EDUCATION",
+                  "visibility":"VISIBLE",
+                  "lifecycle":"ACTIVE",
+                  "reviewRequired":false,
+                  "revisions":[{
+                    "revisionNumber":1,
+                    "confirmationState":"USER_CONFIRMED",
+                    "programmeOrSubject":"BA Music",
+                    "institution":"Private University Name",
+                    "resultOrStatus":"2:1",
+                    "ongoing":false,
+                    "endDate":{"precision":"MONTH","year":2018,"month":7},
+                    "description":"Private degree narrative"
+                  }]
+                }, {
+                  "category":"QUALIFICATION_TRAINING",
+                  "visibility":"VISIBLE",
+                  "lifecycle":"ACTIVE",
+                  "reviewRequired":false,
+                  "revisions":[{
+                    "revisionNumber":1,
+                    "confirmationState":"USER_CONFIRMED",
+                    "qualificationTitle":"AWS Cloud Practitioner",
+                    "issuer":"Private Training Issuer",
+                    "resultOrStatus":"Merit",
+                    "issueDate":{"precision":"MONTH","year":2025,"month":6}
+                  }]
+                }, {
+                  "category":"PROJECT",
+                  "visibility":"VISIBLE",
+                  "lifecycle":"ACTIVE",
+                  "reviewRequired":false,
+                  "revisions":[{
+                    "revisionNumber":1,
+                    "confirmationState":"USER_CONFIRMED",
+                    "roleTitle":"Project Developer",
+                    "ongoing":true,
+                    "startDate":{"precision":"MONTH","year":2025,"month":1},
+                    "demonstratedSkills":["TypeScript"]
+                  }]
+                }, {
+                  "category":"EMPLOYMENT",
+                  "visibility":"VISIBLE",
+                  "lifecycle":"ACTIVE",
+                  "reviewRequired":false,
+                  "revisions":[{
+                    "revisionNumber":1,
+                    "confirmationState":"USER_CONFIRMED",
+                    "roleTitle":"Year-only role is intentionally omitted",
+                    "ongoing":false,
+                    "startDate":{"precision":"YEAR","year":2017},
+                    "endDate":{"precision":"YEAR","year":2018}
+                  }]
+                }, {
+                  "category":"EMPLOYMENT",
+                  "visibility":"VISIBLE",
+                  "lifecycle":"ACTIVE",
+                  "reviewRequired":false,
+                  "revisions":[{
+                    "revisionNumber":1,
+                    "confirmationState":"USER_CONFIRMED",
+                    "roleTitle":"Old confirmed role",
+                    "ongoing":false,
+                    "startDate":{"precision":"MONTH","year":2019,"month":1},
+                    "endDate":{"precision":"MONTH","year":2020,"month":1}
+                  }, {
+                    "revisionNumber":2,
+                    "confirmationState":"DRAFT",
+                    "roleTitle":"Unconfirmed replacement",
+                    "ongoing":true,
+                    "startDate":{"precision":"MONTH","year":2020,"month":2}
+                  }]
+                }]
+                """;
+    }
+
     private static final class TestDownstreamServer implements AutoCloseable {
 
         private final AtomicReference<String> profileAuthorization = new AtomicReference<>();
         private final AtomicReference<String> profileCorrelationId = new AtomicReference<>();
         private final AtomicReference<String> profileBody = new AtomicReference<>("{}");
+        private final AtomicReference<String> evidenceAuthorization = new AtomicReference<>();
+        private final AtomicReference<String> evidenceBody = new AtomicReference<>("[]");
         private final AtomicReference<String> jobAuthorization = new AtomicReference<>();
         private final AtomicReference<String> jobCorrelationId = new AtomicReference<>();
         private final AtomicReference<String> jobUserId = new AtomicReference<>();
@@ -1053,6 +1271,7 @@ class JobFinderSecurityIntegrationTest {
                 try {
                     server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
                     server.createContext("/api/profiles/me", this::profile);
+                    server.createContext("/api/evidence", this::evidence);
                     server.createContext("/api/jobs/search", this::jobs);
                     server.createContext(
                             "/api/jobs/REED/reed-1",
@@ -1076,6 +1295,12 @@ class JobFinderSecurityIntegrationTest {
                     exchange.getRequestHeaders().getFirst("X-Correlation-Id"));
             delay(profileDelayMs.get());
             respond(exchange, 200, profileBody.get());
+        }
+
+        private void evidence(HttpExchange exchange) throws IOException {
+            evidenceAuthorization.set(
+                    exchange.getRequestHeaders().getFirst("Authorization"));
+            respond(exchange, 200, evidenceBody.get());
         }
 
         private void jobs(HttpExchange exchange) throws IOException {
@@ -1439,6 +1664,8 @@ class JobFinderSecurityIntegrationTest {
             profileAuthorization.set(null);
             profileCorrelationId.set(null);
             profileBody.set("{}");
+            evidenceAuthorization.set(null);
+            evidenceBody.set("[]");
             jobAuthorization.set(null);
             jobCorrelationId.set(null);
             jobUserId.set(null);
@@ -1459,6 +1686,10 @@ class JobFinderSecurityIntegrationTest {
             return profileCorrelationId.get();
         }
 
+        String evidenceAuthorization() {
+            return evidenceAuthorization.get();
+        }
+
         String jobAuthorization() {
             return jobAuthorization.get();
         }
@@ -1473,6 +1704,10 @@ class JobFinderSecurityIntegrationTest {
 
         void setProfileBody(String body) {
             profileBody.set(body);
+        }
+
+        void setEvidenceBody(String body) {
+            evidenceBody.set(body);
         }
 
         void setMalformedJobResponse(boolean malformed) {

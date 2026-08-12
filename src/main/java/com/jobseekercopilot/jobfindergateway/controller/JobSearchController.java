@@ -3,6 +3,14 @@ package com.jobseekercopilot.jobfindergateway.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jobseekercopilot.generated.jobservice.model.Job;
 import com.jobseekercopilot.generated.jobservice.model.ReedJobSearchResponse;
+import com.jobseekercopilot.generated.userprofileservice.model.EvidenceCategory;
+import com.jobseekercopilot.generated.userprofileservice.model.EvidenceConfirmationState;
+import com.jobseekercopilot.generated.userprofileservice.model.EvidenceEntry;
+import com.jobseekercopilot.generated.userprofileservice.model.EvidenceLifecycle;
+import com.jobseekercopilot.generated.userprofileservice.model.EvidenceRevision;
+import com.jobseekercopilot.generated.userprofileservice.model.EvidenceVisibility;
+import com.jobseekercopilot.generated.userprofileservice.model.PartialDate;
+import com.jobseekercopilot.generated.userprofileservice.model.UserProfile;
 import com.jobseekercopilot.jobfindergateway.client.JobServiceClientFactory;
 import com.jobseekercopilot.jobfindergateway.client.UserProfileClientFactory;
 import com.jobseekercopilot.jobfindergateway.http.DownstreamFailureResponses;
@@ -46,11 +54,16 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.util.ArrayList;
+import java.time.DateTimeException;
+import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -166,7 +179,13 @@ public class JobSearchController {
 
             try {
                 ResponseEntity<ReedJobSearchResponse> response =
-                        searchDownstream(accessToken, fromProfile(userProfile));
+                        searchDownstream(
+                                accessToken,
+                                fromProfile(
+                                        userProfile,
+                                        confirmedEvidenceOrEmpty(
+                                                accessToken,
+                                                userId)));
                 log.info("job-finder-gateway job search completed userId={} finalCount={} durationMs={}",
                         userId,
                         response.getBody() == null ? null : response.getBody().getTotalResults(),
@@ -184,6 +203,10 @@ public class JobSearchController {
 
         // Use the request body from the frontend (preferred flow)
         try {
+            // Matching evidence is an owner-bound server projection. Values in
+            // a request body are never trusted as claimant evidence.
+            searchRequest.setCandidateProfile(
+                    ownerCandidateProfileOrNull(accessToken, userId));
             ResponseEntity<ReedJobSearchResponse> response =
                     searchDownstream(accessToken, searchRequest);
             log.info("job-finder-gateway job search completed userId={} finalCount={} durationMs={}",
@@ -604,7 +627,8 @@ public class JobSearchController {
     }
 
     private JobSearchRequest fromProfile(
-            com.jobseekercopilot.generated.userprofileservice.model.UserProfile profile) {
+            UserProfile profile,
+            List<EvidenceEntry> evidence) {
         var aspirations = new JobSearchRequest.Aspirations();
         aspirations.setDesiredRoles(desiredRoles(profile));
         aspirations.setIndustries(List.of());
@@ -647,7 +671,241 @@ public class JobSearchController {
         request.setAspirations(aspirations);
         request.setWorkPreferences(workPreferences);
         request.setHomeLocation(homeLocation);
+        request.setCandidateProfile(candidateProfile(profile, evidence));
         return request;
+    }
+
+    private JobSearchRequest.CandidateProfile ownerCandidateProfileOrNull(
+            Jwt accessToken,
+            String userId) {
+        UserProfile profile;
+        try {
+            profile = userProfileClientFactory
+                    .authenticated(accessToken.getTokenValue())
+                    .getMyProfile();
+        } catch (RestClientException exception) {
+            log.warn(
+                    "Owner profile evidence unavailable for job matching userId={} error={}; continuing with title-only matching",
+                    userId,
+                    exception.getClass().getSimpleName());
+            return null;
+        }
+        return candidateProfile(
+                profile,
+                confirmedEvidenceOrEmpty(accessToken, userId));
+    }
+
+    private List<EvidenceEntry> confirmedEvidenceOrEmpty(
+            Jwt accessToken,
+            String userId) {
+        try {
+            List<EvidenceEntry> evidence = userProfileClientFactory
+                    .authenticatedEvidence(accessToken.getTokenValue())
+                    .listEvidence(false);
+            return evidence == null ? List.of() : evidence;
+        } catch (RestClientException exception) {
+            log.warn(
+                    "Confirmed evidence unavailable for job matching userId={} error={}; continuing with bounded profile skills only",
+                    userId,
+                    exception.getClass().getSimpleName());
+            return List.of();
+        }
+    }
+
+    private JobSearchRequest.CandidateProfile candidateProfile(
+            UserProfile profile,
+            List<EvidenceEntry> evidence) {
+        List<EvidenceRevisionView> confirmed = confirmedEvidence(evidence);
+        LinkedHashMap<String, String> skills = new LinkedHashMap<>();
+        if (profile != null && profile.getSkills() != null) {
+            profile.getSkills().forEach(value -> addCanonicalSkill(skills, value));
+        }
+        confirmed.stream()
+                .map(EvidenceRevisionView::revision)
+                .map(EvidenceRevision::getDemonstratedSkills)
+                .filter(Objects::nonNull)
+                .flatMap(List::stream)
+                .forEach(value -> addCanonicalSkill(skills, value));
+
+        List<JobSearchRequest.CandidateRole> roles = confirmed.stream()
+                .filter(view -> view.category() == EvidenceCategory.EMPLOYMENT
+                        || view.category() == EvidenceCategory.FREELANCE)
+                .map(EvidenceRevisionView::revision)
+                .map(this::candidateRole)
+                .filter(Objects::nonNull)
+                .limit(50)
+                .toList();
+
+        List<JobSearchRequest.CandidateQualification> qualifications =
+                confirmed.stream()
+                        .filter(view -> view.category() == EvidenceCategory.EDUCATION
+                                || view.category()
+                                        == EvidenceCategory.QUALIFICATION_TRAINING)
+                        .map(this::candidateQualification)
+                        .filter(Objects::nonNull)
+                        .limit(50)
+                        .toList();
+
+        if (skills.isEmpty() && roles.isEmpty() && qualifications.isEmpty()) {
+            return null;
+        }
+        var candidate = new JobSearchRequest.CandidateProfile();
+        candidate.setSkills(skills.values().stream().limit(100).toList());
+        candidate.setRoles(roles);
+        candidate.setQualifications(qualifications);
+        return candidate;
+    }
+
+    private List<EvidenceRevisionView> confirmedEvidence(
+            List<EvidenceEntry> evidence) {
+        if (evidence == null) {
+            return List.of();
+        }
+        return evidence.stream()
+                .filter(Objects::nonNull)
+                .filter(entry -> entry.getLifecycle() == EvidenceLifecycle.ACTIVE)
+                .filter(entry -> entry.getVisibility() == EvidenceVisibility.VISIBLE)
+                .filter(entry -> !Boolean.TRUE.equals(entry.getReviewRequired()))
+                .map(this::latestRevisionView)
+                .filter(Objects::nonNull)
+                .filter(view -> view.category() != null)
+                .filter(view -> view.revision().getConfirmationState()
+                        == EvidenceConfirmationState.USER_CONFIRMED)
+                .toList();
+    }
+
+    private EvidenceRevisionView latestRevisionView(EvidenceEntry entry) {
+        EvidenceRevision latest = latestRevision(entry);
+        return latest == null
+                ? null
+                : new EvidenceRevisionView(entry.getCategory(), latest);
+    }
+
+    private EvidenceRevision latestRevision(EvidenceEntry entry) {
+        if (entry.getRevisions() == null) {
+            return null;
+        }
+        return entry.getRevisions().stream()
+                .filter(Objects::nonNull)
+                .filter(revision -> revision.getRevisionNumber() != null)
+                .max(Comparator.comparingInt(EvidenceRevision::getRevisionNumber))
+                .orElse(null);
+    }
+
+    private JobSearchRequest.CandidateRole candidateRole(
+            EvidenceRevision revision) {
+        String title = boundedText(revision.getRoleTitle(), 200);
+        String startDate = candidateDate(revision.getStartDate());
+        String endDate = candidateDate(revision.getEndDate());
+        String status;
+        if (Boolean.TRUE.equals(revision.getOngoing()) && endDate == null) {
+            status = "CURRENT";
+        } else if (Boolean.FALSE.equals(revision.getOngoing())
+                && endDate != null) {
+            status = "PREVIOUS_ROLE";
+        } else {
+            return null;
+        }
+        if (title == null || startDate == null
+                || (endDate != null && month(endDate).isBefore(month(startDate)))) {
+            return null;
+        }
+        var role = new JobSearchRequest.CandidateRole();
+        role.setJobTitle(title);
+        role.setStatus(status);
+        role.setStartDate(startDate);
+        role.setEndDate(endDate);
+        return role;
+    }
+
+    private JobSearchRequest.CandidateQualification candidateQualification(
+            EvidenceRevisionView view) {
+        EvidenceRevision revision = view.revision();
+        String name = view.category() == EvidenceCategory.EDUCATION
+                ? boundedText(revision.getProgrammeOrSubject(), 200)
+                : boundedText(revision.getQualificationTitle(), 200);
+        if (name == null) {
+            return null;
+        }
+        String status;
+        String dateAchieved = null;
+        String expectedCompletion = null;
+        if (view.category() == EvidenceCategory.EDUCATION) {
+            if (Boolean.TRUE.equals(revision.getOngoing())) {
+                status = "IN_PROGRESS";
+                expectedCompletion = candidateDate(revision.getEndDate());
+                if (expectedCompletion == null) return null;
+            } else if (Boolean.FALSE.equals(revision.getOngoing())) {
+                status = "COMPLETED";
+                dateAchieved = firstNonBlank(
+                        candidateDate(revision.getEndDate()),
+                        candidateDate(revision.getIssueDate()));
+                if (dateAchieved == null) return null;
+            } else {
+                return null;
+            }
+        } else if (revision.getIssueDate() != null) {
+            status = "COMPLETED";
+            dateAchieved = candidateDate(revision.getIssueDate());
+            if (dateAchieved == null) return null;
+        } else if (Boolean.TRUE.equals(revision.getOngoing())) {
+            status = "IN_PROGRESS";
+            expectedCompletion = candidateDate(revision.getEndDate());
+            if (expectedCompletion == null) return null;
+        } else {
+            return null;
+        }
+        var qualification = new JobSearchRequest.CandidateQualification();
+        qualification.setQualificationName(name);
+        qualification.setStatus(status);
+        qualification.setDateAchieved(dateAchieved);
+        qualification.setExpectedCompletion(expectedCompletion);
+        return qualification;
+    }
+
+    private String candidateDate(PartialDate value) {
+        if (value == null || value.getPrecision() == null
+                || value.getYear() == null) {
+            return null;
+        }
+        try {
+            return switch (value.getPrecision()) {
+                case MONTH -> YearMonth.of(value.getYear(), value.getMonth()).toString();
+                case DAY -> LocalDate.of(
+                        value.getYear(), value.getMonth(), value.getDay()).toString();
+                // Matching is month-based. Omitting year-only dates is safer
+                // than inventing a month or an exact day.
+                case YEAR -> null;
+            };
+        } catch (DateTimeException | NullPointerException exception) {
+            return null;
+        }
+    }
+
+    private YearMonth month(String value) {
+        return YearMonth.parse(value.substring(0, 7));
+    }
+
+    private String boundedText(String value, int maximumLength) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() <= maximumLength ? trimmed : null;
+    }
+
+    private void addCanonicalSkill(
+            LinkedHashMap<String, String> skills,
+            String value) {
+        String skill = boundedText(value, 100);
+        if (skill != null && skills.size() < 100) {
+            skills.putIfAbsent(skill.toLowerCase(Locale.ROOT), skill);
+        }
+    }
+
+    private record EvidenceRevisionView(
+            EvidenceCategory category,
+            EvidenceRevision revision) {
     }
 
     private List<String> desiredRoles(

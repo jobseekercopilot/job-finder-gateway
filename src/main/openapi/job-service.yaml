@@ -15,7 +15,7 @@ info:
   license:
     name: Proprietary source-available
   title: Jobseeker Copilot - Job Service API
-  version: 2.3.0
+  version: 2.4.0
 servers:
 - description: Generated server url
   url: http://localhost:8086
@@ -399,6 +399,8 @@ components:
           $ref: "#/components/schemas/WorkPreferences"
         homeLocation:
           $ref: "#/components/schemas/HomeLocation"
+        candidateProfile:
+          $ref: "#/components/schemas/CandidateProfile"
         selectedProviders:
           description: Optional integration providers to search. Empty or omitted means all enabled providers.
           items:
@@ -738,8 +740,15 @@ components:
             $ref: "#/components/schemas/JobFieldProvenance"
           type: array
         matchScore:
+          description: Compatibility alias of matchAssessment.score. The value is produced only by Job Matching; provider-supplied scores are discarded.
           format: double
+          maximum: 1
+          minimum: 0
           type: number
+        matchAssessment:
+          $ref: "#/components/schemas/MatchAssessment"
+        discoveryAssessment:
+          $ref: "#/components/schemas/JobDiscoveryAssessment"
         commuteAssessment:
           $ref: "#/components/schemas/CommuteAssessment"
         applicationStatus:
@@ -1251,6 +1260,10 @@ components:
           - TIMED_OUT
           - SATURATED
           type: string
+        freshness:
+          $ref: "#/components/schemas/SearchFreshness"
+        qualitySummary:
+          $ref: "#/components/schemas/SearchQualitySummary"
       required:
       - jobs
       - resultsByTargetRole
@@ -1313,6 +1326,8 @@ components:
           - TIMED_OUT
           - SATURATED
           type: string
+        qualitySummary:
+          $ref: "#/components/schemas/SearchQualitySummary"
       required:
       - targetRole
       - jobs
@@ -1421,8 +1436,276 @@ components:
           type: integer
         errorMessage:
           type: string
+        dataProvenance:
+          $ref: "#/components/schemas/ProviderDataProvenance"
       required:
       - provider
       - status
       - rawResultCount
+      type: object
+    CandidateProfile:
+      description: Minimal claimant-declared evidence used for deterministic matching. It contains no inferred work-authorisation, clearance or eligibility facts.
+      properties:
+        skills:
+          items:
+            type: string
+          maxItems: 100
+          type: array
+        roles:
+          items:
+            $ref: "#/components/schemas/CandidateRole"
+          maxItems: 50
+          type: array
+        qualifications:
+          items:
+            $ref: "#/components/schemas/CandidateQualification"
+          maxItems: 50
+          type: array
+      type: object
+    CandidateRole:
+      description: Claimant-declared role dates used to measure relevant experience; employer identity is deliberately omitted.
+      properties:
+        jobTitle:
+          type: string
+        status:
+          enum:
+          - CURRENT
+          - PREVIOUS_ROLE
+          type: string
+        startDate:
+          description: Stored date or month precision. Consumers must not infer a missing day.
+          type: string
+        endDate:
+          description: Stored date or month precision. Omitted only for an explicitly current role.
+          type: string
+      type: object
+    CandidateQualification:
+      description: Claimant-declared qualification fact; institution and grade are deliberately omitted.
+      properties:
+        qualificationName:
+          type: string
+        status:
+          enum:
+          - COMPLETED
+          - IN_PROGRESS
+          type: string
+        dateAchieved:
+          description: Explicit stored completion date or month precision.
+          type: string
+        expectedCompletion:
+          description: Explicit stored expected completion date or month precision.
+          type: string
+      type: object
+    JobDiscoveryAssessment:
+      description: Deterministic vacancy classification used to explain filtering before paging.
+      properties:
+        algorithmVersion:
+          type: string
+        availability:
+          enum:
+          - OPEN_AT_RETRIEVAL
+          - UNKNOWN
+          - CLOSED
+          - EXPIRED
+          type: string
+        engagementType:
+          enum:
+          - VACANCY
+          - APPRENTICESHIP
+          - PAID_TRAINING
+          type: string
+        occupationFamily:
+          enum:
+          - SOFTWARE
+          - DATA
+          - QUALITY_ENGINEERING
+          - CYBER_SECURITY
+          - DESIGN
+          - PRODUCT_PROJECT
+          - IT_SUPPORT
+          - NON_TECHNICAL
+          - UNKNOWN
+          type: string
+        seniority:
+          enum:
+          - JUNIOR_ENTRY
+          - MID
+          - SENIOR
+          - LEADERSHIP
+          - UNSPECIFIED
+          type: string
+        targetRoleAlignment:
+          enum:
+          - ALIGNED
+          - RELATED
+          - MISMATCHED
+          - UNKNOWN
+          type: string
+        targetRole:
+          type: string
+        excluded:
+          type: boolean
+        exclusionReasons:
+          items:
+            type: string
+          type: array
+      type: object
+    MatchAssessment:
+      description: Explainable deterministic match result. No LLM or provider-supplied relevance score is used.
+      properties:
+        score:
+          format: double
+          maximum: 1
+          minimum: 0
+          type: number
+        provenance:
+          enum:
+          - DETERMINISTIC_PROFILE
+          - DETERMINISTIC_QUERY_ONLY
+          type: string
+        algorithmVersion:
+          type: string
+        targetRole:
+          type: string
+        rating:
+          enum:
+          - REVIEW_REQUIRED
+          - STRONG
+          - GOOD
+          - PARTIAL
+          - WEAK
+          type: string
+        candidateProfileUsed:
+          type: boolean
+        components:
+          items:
+            $ref: "#/components/schemas/MatchScoreComponent"
+          type: array
+        reasons:
+          items:
+            $ref: "#/components/schemas/MatchReason"
+          type: array
+        hardGateReasons:
+          description: Explicit warnings for eligibility conditions. UNVERIFIED is never an automatic eligibility decision.
+          items:
+            $ref: "#/components/schemas/MatchReason"
+          type: array
+      type: object
+    MatchScoreComponent:
+      properties:
+        code:
+          type: string
+        score:
+          format: double
+          minimum: 0
+          type: number
+        maximumScore:
+          format: double
+          minimum: 0
+          type: number
+        explanation:
+          type: string
+      type: object
+    MatchReason:
+      properties:
+        code:
+          type: string
+        severity:
+          enum:
+          - POSITIVE
+          - GAP
+          - INFO
+          type: string
+        status:
+          enum:
+          - MET
+          - NOT_MET
+          - UNVERIFIED
+          type: string
+        explanation:
+          type: string
+      type: object
+    ProviderDataProvenance:
+      description: Truthful runtime origin and cache metadata for one provider result set.
+      properties:
+        providerMode:
+          enum:
+          - LIVE
+          - FIXTURE
+          - UNKNOWN
+          type: string
+        dataOrigin:
+          enum:
+          - LIVE_PROVIDER
+          - FIXTURE
+          - UNKNOWN
+          type: string
+        resultSource:
+          enum:
+          - PROVIDER_RESPONSE
+          - JOB_SERVICE_CACHE
+          type: string
+        datasetId:
+          type: string
+        datasetVersion:
+          type: string
+        scenario:
+          type: string
+        externalCallsEnabled:
+          type: boolean
+        retrievedAtUtc:
+          format: date-time
+          type: string
+        servedAtUtc:
+          format: date-time
+          type: string
+        cacheAgeSeconds:
+          format: int64
+          minimum: 0
+          type: integer
+      type: object
+    SearchFreshness:
+      description: Aggregate retrieval/cache truth. Provider-specific truth remains in providerResults.
+      properties:
+        resultSource:
+          enum:
+          - PROVIDER_RESPONSE
+          - JOB_SERVICE_CACHE
+          - MIXED
+          - UNKNOWN
+          type: string
+        oldestRetrievedAtUtc:
+          format: date-time
+          type: string
+        servedAtUtc:
+          format: date-time
+          type: string
+        maximumCacheAgeSeconds:
+          format: int64
+          minimum: 0
+          type: integer
+      type: object
+    SearchQualitySummary:
+      description: Counts explaining deterministic vacancy exclusions before paging.
+      properties:
+        assessedJobCount:
+          format: int32
+          minimum: 0
+          type: integer
+        eligibleJobCount:
+          format: int32
+          minimum: 0
+          type: integer
+        excludedExpiredCount:
+          format: int32
+          minimum: 0
+          type: integer
+        excludedPaidTrainingCount:
+          format: int32
+          minimum: 0
+          type: integer
+        excludedOccupationMismatchCount:
+          format: int32
+          minimum: 0
+          type: integer
       type: object

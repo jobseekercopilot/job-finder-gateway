@@ -3,6 +3,7 @@ package com.jobseekercopilot.jobfindergateway.config;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.info.Info;
+import io.swagger.v3.oas.models.media.ComposedSchema;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
@@ -28,12 +29,29 @@ public class OpenApiConfig {
                 .info(new Info()
                         .title("Jobseeker Copilot - Job Finder Gateway API")
                         .description("Gateway API for job search orchestration. Coordinates between user profile, job, and location services.")
-                        .version("1.12.0"));
+                        .version("1.13.0"));
     }
 
     @Bean
     public OpenApiCustomizer targetRolePagingContractCustomizer() {
         return openApi -> {
+            Schema<?> searchRequest = (Schema<?>) openApi.getComponents()
+                    .getSchemas()
+                    .get("JobSearchRequest");
+            if (searchRequest != null && searchRequest.getProperties() != null) {
+                Schema<?> candidateProfile =
+                        (Schema<?>) searchRequest.getProperties().get("candidateProfile");
+                if (candidateProfile != null) {
+                    Schema<?> ownerDerivedCandidateProfile = new ComposedSchema()
+                            .addAllOfItem(candidateProfile)
+                            .readOnly(true)
+                            .description(
+                                    "Server-derived minimal claimant evidence. Caller-supplied values are ignored.");
+                    searchRequest.getProperties()
+                            .put("candidateProfile", ownerDerivedCandidateProfile);
+                }
+            }
+
             Schema<?> targetRoleResults = (Schema<?>) openApi.getComponents()
                     .getSchemas()
                     .get("TargetRoleJobResults");

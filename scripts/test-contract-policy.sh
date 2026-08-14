@@ -105,6 +105,18 @@ if "$repository_root/scripts/verify-contracts.sh" "$temporary_dir/job-result-sta
     exit 1
 fi
 
+copy_contracts "$temporary_dir/job-provenance"
+sed 's/^        dataProvenance:$/        removedDataProvenance:/' \
+    "$temporary_dir/job-provenance/job-service.yaml" \
+    > "$temporary_dir/job-provenance/changed.yaml"
+mv "$temporary_dir/job-provenance/changed.yaml" \
+    "$temporary_dir/job-provenance/job-service.yaml"
+(cd "$temporary_dir/job-provenance" && sha256sum job-service.yaml user-profile-service.json > SHA256SUMS)
+if "$repository_root/scripts/verify-contracts.sh" "$temporary_dir/job-provenance" >/dev/null 2>&1; then
+    echo "contract policy negative test accepted removal of provider data provenance" >&2
+    exit 1
+fi
+
 copy_contracts "$temporary_dir/job-authentication"
 sed 's/^      scheme: bearer$/      scheme: removed/' \
     "$temporary_dir/job-authentication/job-service.yaml" \

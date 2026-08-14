@@ -1,6 +1,7 @@
 package com.jobseekercopilot.jobfindergateway.model.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
@@ -26,6 +27,13 @@ public class JobSearchRequest {
 
     @Valid
     private HomeLocation homeLocation;
+
+    @Valid
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    @Schema(
+            accessMode = Schema.AccessMode.READ_ONLY,
+            description = "Server-derived minimal claimant evidence. Caller-supplied values are ignored.")
+    private CandidateProfile candidateProfile;
 
     @Size(max = 5, message = "selectedProviders cannot contain more than 5 values")
     private List<
@@ -101,6 +109,9 @@ public class JobSearchRequest {
         this.homeLocation = homeLocation;
     }
 
+    public CandidateProfile getCandidateProfile() { return candidateProfile; }
+    public void setCandidateProfile(CandidateProfile value) { candidateProfile = value; }
+
     public List<String> getSelectedProviders() {
         return selectedProviders;
     }
@@ -131,6 +142,60 @@ public class JobSearchRequest {
 
     public void setSort(String sort) {
         this.sort = sort;
+    }
+
+    @Schema(description = "Minimal claimant-declared evidence for deterministic matching; no inferred eligibility facts are accepted.")
+    public static class CandidateProfile {
+        @Size(max = 100)
+        private List<@NotBlank @Size(max = 100) String> skills;
+        @Valid @Size(max = 50)
+        private List<CandidateRole> roles;
+        @Valid @Size(max = 50)
+        private List<CandidateQualification> qualifications;
+        public List<String> getSkills() { return skills; }
+        public void setSkills(List<String> value) { skills = value; }
+        public List<CandidateRole> getRoles() { return roles; }
+        public void setRoles(List<CandidateRole> value) { roles = value; }
+        public List<CandidateQualification> getQualifications() { return qualifications; }
+        public void setQualifications(List<CandidateQualification> value) { qualifications = value; }
+    }
+
+    public static class CandidateRole {
+        @NotBlank @Size(max = 200)
+        private String jobTitle;
+        @NotBlank @Pattern(regexp = "CURRENT|PREVIOUS_ROLE")
+        private String status;
+        @NotBlank @Pattern(regexp = "\\d{4}-\\d{2}(?:-\\d{2})?")
+        private String startDate;
+        @Pattern(regexp = "\\d{4}-\\d{2}(?:-\\d{2})?")
+        private String endDate;
+        public String getJobTitle() { return jobTitle; }
+        public void setJobTitle(String value) { jobTitle = value; }
+        public String getStatus() { return status; }
+        public void setStatus(String value) { status = value; }
+        public String getStartDate() { return startDate; }
+        public void setStartDate(String value) { startDate = value; }
+        public String getEndDate() { return endDate; }
+        public void setEndDate(String value) { endDate = value; }
+    }
+
+    public static class CandidateQualification {
+        @NotBlank @Size(max = 200)
+        private String qualificationName;
+        @NotBlank @Pattern(regexp = "IN_PROGRESS|COMPLETED")
+        private String status;
+        @Pattern(regexp = "\\d{4}-\\d{2}(?:-\\d{2})?")
+        private String dateAchieved;
+        @Pattern(regexp = "\\d{4}-\\d{2}(?:-\\d{2})?")
+        private String expectedCompletion;
+        public String getQualificationName() { return qualificationName; }
+        public void setQualificationName(String value) { qualificationName = value; }
+        public String getStatus() { return status; }
+        public void setStatus(String value) { status = value; }
+        public String getDateAchieved() { return dateAchieved; }
+        public void setDateAchieved(String value) { dateAchieved = value; }
+        public String getExpectedCompletion() { return expectedCompletion; }
+        public void setExpectedCompletion(String value) { expectedCompletion = value; }
     }
 
     public static class Aspirations {

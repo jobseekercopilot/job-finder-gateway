@@ -25,13 +25,15 @@ class OpenApiExportTest {
         String spec = mockMvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         var contract = objectMapper.readTree(spec);
+        Files.createDirectories(Path.of("target"));
+        Files.writeString(Path.of("target/openapi.json"), spec);
         org.junit.jupiter.api.Assertions.assertEquals(
                 "bearer",
                 contract.at("/components/securitySchemes/bearerAuth/scheme").asText());
         org.junit.jupiter.api.Assertions.assertTrue(
                 contract.at("/security/0/bearerAuth").isArray());
         org.junit.jupiter.api.Assertions.assertEquals(
-                "1.12.0",
+                "1.13.0",
                 contract.at("/info/version").asText());
         org.junit.jupiter.api.Assertions.assertEquals(
                 1,
@@ -52,6 +54,24 @@ class OpenApiExportTest {
                 50,
                 contract.at(
                         "/components/schemas/JobSearchRequest/properties/pageSize/maximum")
+                        .asInt());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at(
+                        "/components/schemas/JobSearchRequest/properties/candidateProfile")
+                        .isObject());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at(
+                        "/components/schemas/JobSearchRequest/properties/candidateProfile/readOnly")
+                        .asBoolean());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                100,
+                contract.at(
+                        "/components/schemas/CandidateProfile/properties/skills/maxItems")
+                        .asInt());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                50,
+                contract.at(
+                        "/components/schemas/CandidateProfile/properties/roles/maxItems")
                         .asInt());
         org.junit.jupiter.api.Assertions.assertEquals(
                 "JOB_TITLE_AZ",
@@ -112,6 +132,46 @@ class OpenApiExportTest {
                 contract.at(
                         "/components/schemas/ReedJobSearchResponse/properties/totalPages")
                         .isObject());
+        for (String responseField : java.util.List.of("freshness", "qualitySummary")) {
+            org.junit.jupiter.api.Assertions.assertTrue(
+                    contract.at(
+                            "/components/schemas/ReedJobSearchResponse/properties/"
+                                    + responseField)
+                            .isObject(),
+                    "Missing truthful search response field " + responseField);
+        }
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at(
+                        "/components/schemas/ProviderResultStatus/properties/dataProvenance")
+                        .isObject());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at(
+                        "/components/schemas/Job/properties/matchAssessment")
+                        .isObject());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at(
+                        "/components/schemas/Job/properties/discoveryAssessment")
+                        .isObject());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                contract.at(
+                        "/components/schemas/MatchAssessment/properties/hardGateReasons")
+                        .isObject());
+        java.util.List<String> availability = objectMapper.convertValue(
+                contract.at(
+                        "/components/schemas/JobDiscoveryAssessment/properties/availability/enum"),
+                java.util.List.class);
+        java.util.List<String> engagement = objectMapper.convertValue(
+                contract.at(
+                        "/components/schemas/JobDiscoveryAssessment/properties/engagementType/enum"),
+                java.util.List.class);
+        java.util.List<String> alignment = objectMapper.convertValue(
+                contract.at(
+                        "/components/schemas/JobDiscoveryAssessment/properties/targetRoleAlignment/enum"),
+                java.util.List.class);
+        org.junit.jupiter.api.Assertions.assertTrue(
+                availability.containsAll(java.util.List.of("CLOSED", "EXPIRED")));
+        org.junit.jupiter.api.Assertions.assertTrue(engagement.contains("PAID_TRAINING"));
+        org.junit.jupiter.api.Assertions.assertTrue(alignment.contains("MISMATCHED"));
         org.junit.jupiter.api.Assertions.assertEquals(
                 "MOST_RELEVANT",
                 contract.at(
@@ -244,8 +304,6 @@ class OpenApiExportTest {
                 contract.at(
                         "/paths/~1api~1jobs~1saved/post/responses/201/headers/X-Saved-Job-Outcome/schema/enum/0")
                         .asText());
-        Files.createDirectories(Path.of("target"));
-        Files.writeString(Path.of("target/openapi.json"), spec);
         org.junit.jupiter.api.Assertions.assertEquals(
                 objectMapper.readTree(Files.readString(Path.of("api/openapi.json"))),
                 contract,

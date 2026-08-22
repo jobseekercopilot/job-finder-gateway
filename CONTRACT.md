@@ -1,250 +1,218 @@
-# API Contract: job-finder-gateway ↔ job-service
+# Job Finder identity and downstream contract
 
-## Overview
-This document defines the API contract between the **job-finder-gateway** and the downstream **job-service**. The gateway acts as a secure orchestrator that authenticates requests, fetches user profiles, and triggers job searches.
+Job Finder is the authenticated browser-facing boundary for Job Search. This
+document describes how identity and the generated service contracts cross that
+boundary.
 
----
+## Browser to Job Finder
 
-## 1. Gateway → job-service Request
+`POST /api/jobs/search` requires:
 
-### Endpoint
+```http
+Authorization: Bearer <access-token>
+Content-Type: application/json
 ```
+
+Job Finder accepts only RS256 tokens verified against the configured JWKS. The
+token must have the configured issuer and audience, a non-empty `sub`, and
+`token_type=access`.
+
+`X-User-Id` is not an authentication mechanism. If a browser supplies it, the
+header cannot override the verified token subject.
+
+The request body may contain:
+
+- `aspirations`
+- `workPreferences`
+- `homeLocation`
+- `selectedProviders`
+- `page`
+- `pageSize`
+- `sort`
+
+If the body is omitted, Job Finder obtains the authenticated user's profile and
+maps its structured aspirations, work preferences, and location into the Job
+Service request.
+
+### Request limits and client errors
+
+A supplied request body is capped at 65,536 bytes before JSON binding, including
+streamed or chunked requests without a trusted `Content-Length`. The limit is
+configured by `JOB_FINDER_MAX_SEARCH_REQUEST_BYTES`; startup fails unless it is
+between 1,024 and 262,144 bytes.
+
+The browser-facing API 1.7 applies these limits before calling a downstream:
+
+| Field | Limit |
+| --- | --- |
+| `aspirations.desiredRoles` | required; 1–10 values, each 1–120 characters |
+| `aspirations.locations` | required; 1–10 values, each 1–200 characters |
+| `aspirations.industries` | at most 20 values, each 1–120 characters |
+| salary | non-negative, at most 10,000,000; minimum cannot exceed maximum |
+| `selectedProviders` | at most 3; `REED`, `ADZUNA` or `JSEARCH` |
+| employment types | at most 4; `FULL_TIME`, `PART_TIME`, `CONTRACT` or `TEMPORARY` |
+| remote preference | `REMOTE`, `HYBRID`, `ONSITE` or `ON_SITE` |
+| `page` / `pageSize` | 1–100 / 1–50 |
+| `sort` | one of the seven Job Service API 2.1 sort values |
+| latitude / longitude | −90–90 / −180–180 |
+| company-size / culture lists | at most 10 / 20 values, each 1–100 characters |
+| home display name / postcode | at most 200 / 16 characters |
+
+Validation and malformed JSON return `400`; an oversized body returns `413`.
+These responses use the versioned `ApiErrorResponse` fields
+`schemaVersion`, `code`, safe `message` and `correlationId`. Rejected requests
+do not call User Profile or Job Service. Incoming correlation IDs are preserved
+only when they are at most 128 characters and contain log/header-safe letters,
+digits, `.`, `_` or `-`; otherwise Job Finder generates a UUID.
+
+## Job Finder to User Profile
+
+Job Finder calls:
+
+```http
+GET /api/profiles/me
+Authorization: Bearer <the validated access token>
+```
+
+The User Profile producer contract owns this operation and derives profile
+ownership from the token subject. Job Finder creates a generated client per
+request before assigning the Bearer token, so token state is not shared between
+users.
+
+## Job Finder to Job Service
+
+Job Finder calls:
+
+```http
 POST /api/jobs/search
+Authorization: Bearer <the validated access token>
+Content-Type: application/json
 ```
 
-### Headers
-| Header | Type | Required | Description |
-|--------|------|----------|-------------|
-| `X-User-Id` | String | Yes | The authenticated user's ID extracted from JWT claims |
+Job Finder creates a generated Job Service client per request before assigning
+the Bearer token, so mutable authentication state is not shared between users.
+It never forwards the browser's `X-User-Id`. Job Service independently verifies
+the token signature, issuer, audience, expiry, nonblank subject and access-token
+type, then derives the search identity only from `sub`.
 
-### Request Body
-```json
-{
-  "aspirations": {
-    "desiredRoles": ["Senior Backend Engineer", "Tech Lead"],
-    "industries": ["FinTech", "SaaS"],
-    "salaryExpectation": {
-      "min": 120000,
-      "max": 180000,
-      "currency": "USD"
-    },
-    "locations": ["Remote", "London", "New York"]
-  },
-  "workPreferences": {
-    "employmentType": ["FULL_TIME", "CONTRACT"],
-    "remotePreference": "HYBRID",
-    "companySize": ["50-200", "200-1000"],
-    "culture": ["Innovative", "Collaborative"]
-  }
-}
+The request is converted into the model generated from the pinned Job Service
+contract. The generated response is returned directly, preserving:
+
+- canonical and provider job identity
+- per-target-role jobs, paging totals, provider outcomes, search status and
+  matching status
+- provider statuses
+- normalised location and salary fields
+- application and generated-document enrichment
+- bounded aggregate compatibility `page`, `pageSize`, `totalResults`,
+  `totalPages` and effective `sort`
+
+Job Finder does not invent paging defaults or reorder results. Omitted paging
+fields remain unset so Job Service applies its documented defaults. Explicit
+values pass through unchanged; Job Service remains the authority for bounds,
+stable ordering, provider fetch budgets, per-target-role paging and aggregate
+compatibility metadata.
+
+### Saved jobs
+
+The same verified access token is required for:
+
+```http
+POST /api/jobs/saved
+GET /api/jobs/saved?page=0&size=20
+GET /api/jobs/saved/{savedJobId}
+DELETE /api/jobs/saved/{savedJobId}
+Authorization: Bearer <the validated access token>
 ```
 
-### Field Descriptions
+Job Finder creates a new generated Job Service client before assigning each
+request's Bearer token. It never accepts or forwards an owner header. Job
+Service independently verifies the token and owns save validation, stable IDs,
+immutable snapshot versions/content digests, list/get isolation and idempotent
+unsave behavior.
 
-#### `aspirations`
-| Field | Type | Description |
-|-------|------|-------------|
-| `desiredRoles` | Array<String> | Job titles the user is targeting |
-| `industries` | Array<String> | Preferred industries |
-| `salaryExpectation` | Object | Salary range with min, max, and currency |
-| `locations` | Array<String> | Preferred work locations |
+Save preserves `201 CREATED` or `200 REPLAYED|UPDATED|REACTIVATED` and the
+`X-Saved-Job-Outcome` header. Missing and other-owner identifiers map to the
+same stable `404`. Malformed canonical input maps to a stable `400`; unavailable
+or invalid downstream responses do not expose Job Service details. Request
+logs replace saved-job UUIDs with `{savedJobId}`.
 
-#### `workPreferences`
-| Field | Type | Description |
-|-------|------|-------------|
-| `employmentType` | Array<String> | Accepted employment types (e.g., FULL_TIME, PART_TIME, CONTRACT) |
-| `remotePreference` | String | Remote work preference (REMOTE, HYBRID, ONSITE) |
-| `companySize` | Array<String> | Preferred company sizes |
-| `culture` | Array<String> | Desired company culture attributes |
+The returned `savedJobId`, snapshot version, content digest, timestamps and
+source state are server-owned. Document Generation and Application Tracking
+must retrieve the snapshot by that ID; they must not treat later browser job
+content as authoritative.
 
----
+## Job Finder to Application Tracker
 
-## 2. User Profile Service Response (JSON String Fields)
+All application proxy routes require the same validated access token as Job
+Search. The list route retains its current compatibility path:
 
-### Endpoint Called by Gateway
-```
-GET http://user-profile-service/api/profiles/me
-```
-
-### Headers Sent
-| Header | Value | Description |
-|--------|-------|-------------|
-| `X-User-Id` | `{USER_ID from JWT}` | Identifies the user whose profile to fetch |
-
-### Expected Response (200 OK) - JSON String Structure
-```json
-{
-  "userId": "uuid-of-user",
-  "skills": "Java, Spring Boot, Microservices",
-  "experience": "10+ years in software engineering",
-  "aspirations": "{\"desiredRoles\":[\"Senior Backend Engineer\",\"Tech Lead\"],\"industries\":[\"FinTech\",\"SaaS\"],\"salaryExpectation\":{\"min\":120000,\"max\":180000,\"currency\":\"USD\"},\"locations\":[\"Remote\",\"London\",\"New York\"]}",
-  "workPrefs": "{\"employmentType\":[\"FULL_TIME\",\"CONTRACT\"],\"remotePreference\":\"HYBRID\",\"companySize\":[\"50-200\",\"200-1000\"],\"culture\":[\"Innovative\",\"Collaborative\"]}"
-}
+```http
+GET /api/jobs/applications/user/{userId}
+Authorization: Bearer <access-token>
 ```
 
-### Field Descriptions - UserProfile from user-profile-service
+`{userId}` must exactly match the token subject. Job Finder constructs the
+downstream list path from the subject and never forwards `X-User-Id`.
 
-#### Core Fields
-| Field | Type | Description |
-|-------|------|-------------|
-| `userId` | String | Unique user identifier |
-| `skills` | String (TEXT) | User's skills (stored as text) |
-| `experience` | String (TEXT) | User's experience (stored as text) |
-| `aspirations` | String (TEXT) | JSON string containing aspirations data |
-| `workPrefs` | String (TEXT) | JSON string containing work preferences data |
+Status routes first load the application with the validated Bearer token and
+verify that its `userId` equals the token subject. Generated withdrawal is one
+owner-scoped Application Tracker command: Tracker durably records the operation,
+coordinates atomic Document Store cleanup and returns either completed `200` or
+recovery-pending `202`. Job Finder preserves that response and does not issue
+document deletes. Unknown and foreign record IDs return the same redacted `404`;
+downstream response resource identity is checked before returning data.
 
-#### Aspirations JSON Structure (parsed from `aspirations` field)
-```json
-{
-  "desiredRoles": ["Senior Backend Engineer", "Tech Lead"],
-  "industries": ["FinTech", "SaaS"],
-  "salaryExpectation": {
-    "min": 120000,
-    "max": 180000,
-    "currency": "USD"
-  },
-  "locations": ["Remote", "London", "New York"]
-}
-```
+Request logs replace
+application IDs and list-owner path segments with placeholders. Framework web
+logging stays at INFO and the first-request handler lookup warning is suppressed
+so it cannot emit the unredacted path before the application filter.
 
-#### Work Preferences JSON Structure (parsed from `workPrefs` field)
-```json
-{
-  "employmentType": ["FULL_TIME", "CONTRACT"],
-  "remotePreference": "HYBRID",
-  "companySize": ["50-200", "200-1000"],
-  "culture": ["Innovative", "Collaborative"]
-}
-```
+These gateway checks are defence in depth, not an atomic authorization
+boundary. Application Tracker must authenticate the token and enforce
+subject/resource ownership within each query and mutation. That blocking
+dependency is tracked by
+[`APP-03`](https://github.com/jobseekercopilot/application-tracker-service/issues/4).
 
----
+## Contract provenance
 
-## 3. job-service → Gateway Response
+Exact producer contracts and their source revisions are recorded under
+`src/main/openapi`. `SHA256SUMS` protects the reviewed bytes. Maven uses OpenAPI
+Generator 7.5.0 during `generate-sources`; generated code and JARs are never
+committed.
 
-### Success Response (200 OK)
-```json
-{
-  "jobs": [
-    {
-      "id": "job-123",
-      "title": "Senior Backend Engineer",
-      "company": "TechCorp Inc.",
-      "location": "Remote",
-      "salary": {
-        "min": 140000,
-        "max": 170000,
-        "currency": "USD"
-      },
-      "employmentType": "FULL_TIME",
-      "postedDate": "2024-01-15T10:30:00Z",
-      "matchScore": 0.92
-    }
-  ],
-  "totalResults": 42,
-  "page": 1,
-  "pageSize": 20
-}
-```
+The Job Service pin currently consumes contract `2.3.0` at producer revision
+`f556702891b02a75ae37f3cdc0639cb067356e44`. It includes official NHS Jobs and
+Find an apprenticeship fields plus independently
+paged target-role results with role-specific totals, provider outcomes,
+`searchStatus` and `matchingStatus`, plus bounded aggregate compatibility
+paging/sorting. It retains the stable provider-result taxonomy, healthy
+empty-result semantics, canonical Job schema `2.0` and the owner-scoped
+saved-job resource. Compatibility checks protect search and saved-job response,
+request and identity boundaries.
 
-### Error Responses
+Contract policy checks reject:
 
-#### 400 Bad Request
-```json
-{
-  "error": "INVALID_REQUEST",
-  "message": "Missing required field: aspirations.desiredRoles"
-}
-```
+- missing, symbolic, or checksum-drifted inputs
+- unexpected producer revision metadata
+- removal of required search, saved-job or profile operations
+- removal of either downstream Bearer authentication boundary
+- removal of key Job Search request or response boundary fields
+- removal of paging/sort fields, independently required target-role result
+  metadata or the reviewed sort modes
+- removal of saved-job identity, version, digest, source-state or canonical
+  snapshot fields
 
-#### 401 Unauthorized
-```json
-{
-  "error": "UNAUTHORIZED",
-  "message": "Invalid or missing X-User-Id"
-}
-```
+## Errors and ownership constraints
 
-#### 503 Service Unavailable
-```json
-{
-  "error": "SERVICE_UNAVAILABLE",
-  "message": "Job search service is temporarily unavailable"
-}
-```
-
----
-
-## 4. Data Flow
-
-```
-Client Request
-    ↓
-[Gateway] JwtTokenFilter extracts USER_ID from JWT
-    ↓
-[Gateway] UserProfileClient fetches profile from user-profile-service
-    ↓
-[Gateway] Profile contains JSON strings: aspirations & workPrefs
-    ↓
-[Gateway] JsonParser parses JSON strings into flattened fields
-    ↓
-[Gateway] Transforms flat fields into nested JobSearchRequest format
-    ↓
-[Gateway] JobServiceClient calls job-service with X-User-Id header
-    ↓
-[Gateway] Returns job results to client
-```
-
----
-
-## 5. Error Handling
-
-The gateway implements **defensive programming**:
-
-- **User Profile Service Unreachable**: Returns `503 SERVICE_UNAVAILABLE` with message: "User profile service is currently unavailable"
-- **Job Service Unreachable**: Returns `503 SERVICE_UNAVAILABLE` with message: "Job search service is currently unavailable"
-- **Invalid JWT**: Returns `401 UNAUTHORIZED`
-- **Missing Profile Data**: Returns `400 BAD_REQUEST` if required fields are missing
-- **JSON Parse Errors**: Returns `400 BAD_REQUEST` if aspirations/workPrefs JSON is malformed
-
----
-
-## 6. Gateway Constraints
-
-- **Thin Gateway**: No business logic for job matching or scoring
-- **Transform Only**: Parses JSON strings and maps to job-service request format
-- **Relay**: Passes through responses with minimal transformation
-- **Aggregate**: Combines profile data with job search results
-
----
-
-## 7. Key Design Decision: JSON String Storage
-
-The user-profile-service stores complex data as JSON strings in TEXT columns:
-
-**Database Storage:**
-```java
-@Column(columnDefinition = "TEXT")
-private String aspirations;  // JSON string
-
-@Column(columnDefinition = "TEXT")
-private String workPrefs;    // JSON string
-```
-
-**Gateway Processing:**
-1. Receives UserProfile with JSON strings
-2. Uses `JsonParser` to parse `aspirations` and `workPrefs` fields
-3. Extracts flattened fields (desiredRoles, industries, salaryMin, etc.)
-4. Transforms to nested JobSearchRequest for job-service
-
-**Benefits:**
-- Flexible schema without complex migrations
-- Simple database structure
-- Gateway handles all parsing/transformation
-- Easy to evolve JSON structure independently
-
----
-
-## Version History
-- v1.2.0 (2024-01-15): Updated to parse JSON string fields from user-profile-service
-- v1.1.0 (2024-01-15): Flattened UserProfile DTO structure
-- v1.0.0 (2024-01-15): Initial contract definition
+- Missing or invalid authentication returns a stable, redacted `401` response
+  with a correlation ID.
+- An incomplete profile, invalid search request or malformed JSON returns the
+  stable API 1.7 error schema with `400`; a body over the configured byte limit
+  uses the same schema with `413`.
+- An invalid saved-job request returns a stable `400`; missing and foreign
+  saved-job IDs return the same stable `404`.
+- An unavailable User Profile or Job Service returns `503` without exposing
+  credentials.
+- Job Finder enforces its application-proxy ownership checks, but JFG-01 remains
+  open until Application Tracker APP-03 supplies atomic downstream enforcement.

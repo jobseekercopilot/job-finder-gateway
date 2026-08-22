@@ -1,397 +1,98 @@
-# Job Finder Gateway - Developer Guide
+# Job Finder Gateway
 
-## Overview
-The **job-finder-gateway** is a Spring Boot microservice that acts as a secure orchestrator between clients and downstream services. It authenticates requests via JWT, fetches user profiles, and triggers job searches.
+## Role in Job Seeker Copilot
 
----
+| Role | Called by | Calls | Data | Local port |
+|---|---|---|---|---:|
+| JWT-protected facade for job search, saved jobs and application tracking | Client Express BFF | Job Service, User Profile Service, Application Tracker | None | 8080 |
 
-## Architecture
+See the central [job-search journey](https://docs.jobseekercopilot.com/journeys/job-search/), [application journey](https://docs.jobseekercopilot.com/journeys/applications/), and [API map](https://docs.jobseekercopilot.com/apis/overview/).
 
-```
-┌─────────────┐
-│   Client    │
-└──────┬──────┘
-       │ Authorization: Bearer <JWT>
-       ▼
-┌─────────────────────────────┐
-│   job-finder-gateway        │
-│  ┌───────────────────────┐  │
-│  │  JwtTokenFilter       │  │
-│  └───────────┬───────────┘  │
-│              │               │
-│  ┌───────────▼───────────┐  │
-│  │  JobSearchController  │  │
-│  └───────────┬───────────┘  │
-│              │               │
-│  ┌───────────▼───────────┐  │
-│  │  UserProfileClient    │  │
-│  └───────────┬───────────┘  │
-│              │               │
-│  ┌───────────▼───────────┐  │
-│  │  JsonParser           │  │
-│  └───────────┬───────────┘  │
-│              │               │
-│  ┌───────────▼───────────┐  │
-│  │  JobServiceClient     │  │
-│  └───────────────────────┘  │
-└─────────────────────────────┘
-       │           │           │
-       ▼           ▼           ▼
-┌──────────┐ ┌──────────┐ ┌──────────┐
-│ user-    │ │   job-   │ │   JWT    │
-│ profile- │ │ service  │ │  Secret  │
-│ service  │ │          │ │          │
-└──────────┘ └──────────┘ └──────────┘
-```
+Job Finder Gateway is the authenticated browser-facing boundary for Job Search.
+It accepts search requests from the client BFF and delegates canonical search
+work to Job Service. It exposes Job Service's owner-scoped saved-job operations
+so the browser can exchange a selected canonical result for a stable
+`savedJobId`. It also contains application-tracker proxy endpoints; those
+dependencies are integration boundaries, not owned implementations.
 
----
+Status: **implemented and composed for controlled private-beta use**. Reproducible
+generated clients, the Job Search authentication boundary, and Job Finder's
+application-proxy ownership checks are implemented. Atomic Application Tracker
+ownership, validation, and timeout issues are recorded in
+[`docs/BETA_READINESS_AUDIT.md`](docs/BETA_READINESS_AUDIT.md).
 
-## Authentication
+## Local verification
 
-### JWT Token Structure
-The gateway expects a JWT token in the `Authorization` header:
-```
-Authorization: Bearer <JWT_TOKEN>
-```
+Requires Java 17 and Maven 3.9 or later:
 
-### JWT Claims
-The JWT must contain a `USER_ID` claim:
-```json
-{
-  "sub": "user@example.com",
-  "USER_ID": "uuid-of-user",
-  "iat": 1705312800,
-  "exp": 1705316400
-}
-```
-
-### JwtTokenFilter Implementation
-The `JwtTokenFilter` extracts the `USER_ID` claim from the JWT and makes it available to controllers via request attributes.
-
-**Key Implementation Details:**
-1. Filter intercepts all requests to `/api/jobs/**`
-2. Validates JWT signature using the configured `JWT_SECRET`
-3. Extracts `USER_ID` claim and stores it as a request attribute
-4. Rejects requests with invalid/expired tokens with `401 UNAUTHORIZED`
-
----
-
-## User Profile Service Integration
-
-### Endpoint Called by Gateway
-```
-GET http://user-profile-service/api/profiles/me
-```
-
-### Headers Sent
-| Header | Value | Description |
-|--------|-------|-------------|
-| `X-User-Id` | `{USER_ID from JWT}` | Identifies the user whose profile to fetch |
-
-### Expected Response (200 OK) - JSON String Structure
-```json
-{
-  "userId": "uuid-of-user",
-  "skills": "Java, Spring Boot, Microservices",
-  "experience": "10+ years in software engineering",
-  "aspirations": "{\"desiredRoles\":[\"Senior Backend Engineer\",\"Tech Lead\"],\"industries\":[\"FinTech\",\"SaaS\"],\"salaryExpectation\":{\"min\":120000,\"max\":180000,\"currency\":\"USD\"},\"locations\":[\"Remote\",\"London\",\"New York\"]}",
-  "workPrefs": "{\"employmentType\":[\"FULL_TIME\",\"CONTRACT\"],\"remotePreference\":\"HYBRID\",\"companySize\":[\"50-200\",\"200-1000\"],\"culture\":[\"Innovative\",\"Collaborative\"]}"
-}
-```
-
-### Important: JSON String Fields
-The user-profile-service stores complex data as JSON strings in TEXT columns:
-
-- **`aspirations`**: JSON string containing desired roles, industries, salary expectations, and locations
-- **`workPrefs`**: JSON string containing employment type, remote preference, company size, and culture preferences
-
-### Gateway Processing
-The gateway uses `JsonParser` to:
-1. Parse the `aspirations` JSON string into flattened fields
-2. Parse the `workPrefs` JSON string into flattened fields
-3. Make data available for transformation to job-service format
-
-### Field Descriptions - Parsed Aspirations
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `desiredRoles` | Array<String> | Job titles the user is targeting |
-| `industries` | Array<String> | Preferred industries |
-| `salaryMin` | Integer | Minimum salary expectation |
-| `salaryMax` | Integer | Maximum salary expectation |
-| `salaryCurrency` | String | Currency code (e.g., USD, EUR, GBP) |
-| `locations` | Array<String> | Preferred work locations |
-
-### Field Descriptions - Parsed Work Preferences
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `employmentType` | Array<String> | Accepted employment types (e.g., FULL_TIME, PART_TIME, CONTRACT) |
-| `remotePreference` | String | Remote work preference (REMOTE, HYBRID, ONSITE) |
-| `companySize` | Array<String> | Preferred company sizes |
-| `culture` | Array<String> | Desired company culture attributes |
-
-### Error Responses from User Profile Service
-
-#### 404 Not Found
-```json
-{
-  "error": "PROFILE_NOT_FOUND",
-  "message": "User profile does not exist"
-}
-```
-
-#### 503 Service Unavailable
-Returned when the user-profile-service is unreachable. The gateway will propagate this as:
-```json
-{
-  "error": "SERVICE_UNAVAILABLE",
-  "message": "User profile service is currently unavailable"
-}
-```
-
----
-
-## Job Service Integration
-
-### Endpoint Called by Gateway
-```
-POST http://job-service/api/jobs/search
-```
-
-### Headers Sent
-| Header | Value | Description |
-|--------|-------|-------------|
-| `X-User-Id` | `{USER_ID from JWT}` | Identifies the user for job search context |
-
-### Request Body
-The gateway transforms the parsed flat profile into this nested format:
-```json
-{
-  "aspirations": {
-    "desiredRoles": ["Senior Backend Engineer"],
-    "industries": ["FinTech"],
-    "salaryExpectation": {
-      "min": 120000,
-      "max": 180000,
-      "currency": "USD"
-    },
-    "locations": ["Remote"]
-  },
-  "workPreferences": {
-    "employmentType": ["FULL_TIME"],
-    "remotePreference": "HYBRID",
-    "companySize": ["50-200"],
-    "culture": ["Innovative"]
-  }
-}
-```
-
-### Expected Response (200 OK)
-```json
-{
-  "jobs": [
-    {
-      "id": "job-123",
-      "title": "Senior Backend Engineer",
-      "company": "TechCorp Inc.",
-      "location": "Remote",
-      "salary": {
-        "min": 140000,
-        "max": 170000,
-        "currency": "USD"
-      },
-      "employmentType": "FULL_TIME",
-      "postedDate": "2024-01-15T10:30:00Z",
-      "matchScore": 0.92
-    }
-  ],
-  "totalResults": 42,
-  "page": 1,
-  "pageSize": 20
-}
-```
-
-### Error Responses from Job Service
-
-#### 400 Bad Request
-```json
-{
-  "error": "INVALID_REQUEST",
-  "message": "Missing required field"
-}
-```
-
-#### 503 Service Unavailable
-Returned when the job-service is unreachable. The gateway will propagate this as:
-```json
-{
-  "error": "SERVICE_UNAVAILABLE",
-  "message": "Job search service is currently unavailable"
-}
-```
-
----
-
-## Gateway Endpoint
-
-### GET /api/jobs/search
-
-**Authentication:** Required (JWT Bearer token)
-
-**Flow:**
-1. `JwtTokenFilter` validates JWT and extracts `USER_ID`
-2. `JobSearchController` receives request
-3. `UserProfileClient` fetches profile from user-profile-service (with JSON string fields)
-4. `JsonParser` parses `aspirations` and `workPrefs` JSON strings into flattened fields
-5. Controller validates profile completeness
-6. `JobServiceClient` transforms flat profile to nested format and calls job-service
-7. Gateway returns job results to client
-
-**Success Response (200 OK):**
-Returns the job-service response directly.
-
-**Error Responses:**
-- `401 UNAUTHORIZED` - Invalid or missing JWT
-- `503 SERVICE_UNAVAILABLE` - Downstream service unreachable
-
----
-
-## Configuration
-
-### application.yml
-```yaml
-server:
-  port: ${SERVER_PORT:8080}
-
-jwt:
-  secret: ${JWT_SECRET}
-
-services:
-  user-profile:
-    url: ${USER_PROFILE_SERVICE_URL:http://localhost:8081}
-  job-service:
-    url: ${JOB_SERVICE_URL:http://localhost:8082}
-```
-
-### Environment Variables
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SERVER_PORT` | 8080 | Gateway server port |
-| `JWT_SECRET` | change-me | Secret key for JWT validation |
-| `USER_PROFILE_SERVICE_URL` | http://localhost:8081 | User profile service base URL |
-| `JOB_SERVICE_URL` | http://localhost:8082 | Job service base URL |
-
----
-
-## Gateway Principles
-
-### Thin Gateway
-- **No business logic** for job matching or scoring
-- **Transform only**: Parses JSON strings and maps to job-service request format
-- **Relay**: Passes through responses with minimal transformation
-- **Aggregate**: Combines profile data with job search results
-
-### Defensive Programming
-- Always handle downstream service failures gracefully
-- Return clear error messages with appropriate HTTP status codes
-- Validate inputs before passing to downstream services
-- Handle JSON parsing errors gracefully
-
----
-
-## Development Setup
-
-### Prerequisites
-- Java 17+
-- Maven 3.8+
-- Running instances of user-profile-service and job-service
-
-### Build
 ```bash
-mvn clean install
+mvn -B --no-transfer-progress clean verify
+docker build -t local/job-finder-gateway .
 ```
 
-### Run
-```bash
-mvn spring-boot:run
-```
+These commands are the clean-clone verification contract. Maven generates
+Job Service and User Profile clients from the checksum-protected producer
+contracts under `src/main/openapi`; generated sources and binaries are not
+committed.
 
-### Test
-```bash
-mvn test
-```
+Authentication uses RS256 access tokens verified from the platform JWKS.
+Runtime configuration includes `AUTH_JWKS_URI`, `JOB_FINDER_JWT_ISSUER`,
+`JOB_FINDER_JWT_AUDIENCE`, `JOB_SERVICE_URL`, `USER_PROFILE_SERVICE_URL`,
+`APPLICATION_TRACKER_SERVICE_URL`, `JOB_FINDER_MAX_SEARCH_REQUEST_BYTES`
+(default 65,536), and the downstream timeout settings documented below. No signing
+credential is accepted or stored by this service.
 
----
+Application list, status, and generated-withdraw routes derive ownership from
+the validated token subject. Job Finder forwards that Bearer token to
+Application Tracker and denies foreign and unknown IDs identically. Application
+Tracker owns the durable generated-withdrawal operation and its atomic Document
+Store cleanup; Job Finder does not perform a second best-effort delete.
+Job Finder also creates a request-scoped generated Job Service client and
+forwards the original Bearer token; it never relays a caller-supplied identity
+header. Job Service independently verifies the token and derives search
+identity from its subject.
+The browser-facing API 1.7 validates bounded search criteria and caps request
+bodies before any downstream call. It passes valid Job Service API 2.2 `page`,
+`pageSize` and `sort` through unchanged and returns independently paged
+target-role results with role-specific totals and dependency outcomes. The
+bounded aggregate paging fields remain available as compatibility metadata.
+Invalid, malformed and oversized requests use a stable versioned error with
+safe correlation metadata.
 
-## Key Classes
+Every downstream call has a finite connection-pool, connection, and response
+timeout. The defaults are 250 ms, 500 ms, and 4,000 ms respectively, configured
+with `JOB_FINDER_CONNECTION_REQUEST_TIMEOUT_MS`,
+`JOB_FINDER_CONNECT_TIMEOUT_MS`, and `JOB_FINDER_RESPONSE_TIMEOUT_MS`. All
+downstream work for one browser request also shares a four-second monotonic
+budget (`JOB_FINDER_REQUEST_DEADLINE_MS`), so profile fallback cannot start a
+fresh full-duration Job Service wait after consuming the earlier budget.
+Values outside 1–60,000 ms fail application startup. Timeout responses use
+`504`; malformed downstream responses use `502`; unavailable dependencies use
+`503`. Automatic transport retries are disabled so the gateway never repeats
+an unsafe call and never hides retry time outside the request budget. All
+failures use the same safe versioned error schema and correlation ID.
 
-| Class | Responsibility |
-|-------|---------------|
-| `JwtTokenFilter` | Extracts USER_ID from JWT claims |
-| `JwtUtil` | JWT validation and parsing utilities |
-| `UserProfileClient` | Calls user-profile-service and triggers JSON parsing |
-| `JsonParser` | Parses JSON strings from user-profile into flattened fields |
-| `JobServiceClient` | Calls job-service (transforms flat to nested) |
-| `JobSearchController` | Orchestrates the job search flow |
-| `SecurityConfig` | Configures security filter chain |
+The same boundary provides `POST/GET /api/jobs/saved` and
+`GET/DELETE /api/jobs/saved/{savedJobId}`. Job Service remains the authority
+for owner identity, stable IDs, immutable snapshots, replay/version outcomes
+and non-enumerating lookups. After save, document and application workflows
+must use the returned server-owned `savedJobId`; browser job fields are not
+authoritative input to those workflows.
 
----
+Application Tracker must enforce the same subject/resource relationship
+atomically; that dependency is tracked by
+[`APP-03`](https://github.com/jobseekercopilot/application-tracker-service/issues/4).
 
-## Data Transformation Pipeline
+The approved end-to-end request path and responsibility owners are defined in
+the Infrastructure
+[Job Search architecture ADR](https://github.com/jobseekercopilot/infrastructure/blob/develop/docs/adr/0001-job-search-architecture-and-ownership.md).
 
-### Step 1: Receive from user-profile-service
-```json
-{
-  "userId": "uuid-of-user",
-  "aspirations": "{\"desiredRoles\":[\"Senior Backend Engineer\"],\"industries\":[\"FinTech\"],\"salaryExpectation\":{\"min\":120000,\"max\":180000,\"currency\":\"USD\"}}",
-  "workPrefs": "{\"employmentType\":[\"FULL_TIME\"],\"remotePreference\":\"HYBRID\"}"
-}
-```
+Swagger UI is exposed at `/swagger-ui/index.html` and generated OpenAPI at
+`/v3/api-docs`; both require a valid access token. `CONTRACT.md` documents the
+identity and generated-client boundaries.
 
-### Step 2: After JsonParser (flattened fields populated)
-```java
-userProfile.getDesiredRoles() // ["Senior Backend Engineer"]
-userProfile.getIndustries()    // ["FinTech"]
-userProfile.getSalaryMin()     // 120000
-userProfile.getSalaryMax()     // 180000
-userProfile.getEmploymentType() // ["FULL_TIME"]
-userProfile.getRemotePreference() // "HYBRID"
-```
+## Branches, ownership, and licence
 
-### Step 3: Transform to job-service format (nested)
-```json
-{
-  "aspirations": {
-    "desiredRoles": ["Senior Backend Engineer"],
-    "industries": ["FinTech"],
-    "salaryExpectation": {
-      "min": 120000,
-      "max": 180000,
-      "currency": "USD"
-    }
-  },
-  "workPreferences": {
-    "employmentType": ["FULL_TIME"],
-    "remotePreference": "HYBRID"
-  }
-}
-```
-
----
-
-## Error Handling Strategy
-
-1. **JWT Validation Failures**: Return `401 UNAUTHORIZED`
-2. **User Profile Service Down**: Return `503 SERVICE_UNAVAILABLE`
-3. **JSON Parse Errors**: Return `400 BAD_REQUEST` with parse error details
-4. **Job Service Down**: Return `503 SERVICE_UNAVAILABLE`
-5. **Missing Profile Data**: Return `400 BAD_REQUEST`
-6. **Unexpected Errors**: Return `500 INTERNAL_SERVER_ERROR`
-
----
-
-## Version History
-- v1.2.0 (2024-01-15): Updated to parse JSON string fields from user-profile-service
-- v1.1.0 (2024-01-15): Flattened UserProfile DTO structure
-- v1.0.0 (2024-01-15): Initial implementation
+`develop` is the integration/default branch for beta hardening. See
+`CONTRIBUTING.md` and `SECURITY.md`. This repository is proprietary,
+source-available software; see `LICENSE`.

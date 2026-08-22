@@ -1,0 +1,32 @@
+# Maven and generated binaries
+target/
+libs/
+*.jar
+*.class
+*.war
+*.log
+
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+!.env.*.example
+application-local.yml
+application-prod.yml
+*.pem
+*.key
+*.p12
+*.jks
+
+# IDE, OS, agent, and test artefacts
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+.agents/
+.codex/
+coverage/
+test-output/
+recordings/
+demo-recordings/

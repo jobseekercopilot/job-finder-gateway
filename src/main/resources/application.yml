@@ -1,11 +1,42 @@
+spring:
+  application:
+    name: job-finder-gateway
+
 server:
   port: ${SERVER_PORT:8080}
 
-jwt:
-  secret: ${JWT_SECRET}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+job-finder:
+  http:
+    max-search-request-bytes: ${JOB_FINDER_MAX_SEARCH_REQUEST_BYTES:65536}
+  downstream:
+    connect-timeout-ms: ${JOB_FINDER_CONNECT_TIMEOUT_MS:500}
+    connection-request-timeout-ms: ${JOB_FINDER_CONNECTION_REQUEST_TIMEOUT_MS:250}
+    response-timeout-ms: ${JOB_FINDER_RESPONSE_TIMEOUT_MS:4000}
+    request-deadline-ms: ${JOB_FINDER_REQUEST_DEADLINE_MS:4000}
+  security:
+    jwk-set-uri: ${AUTH_JWKS_URI:http://authentication-service:8084/.well-known/jwks.json}
+    issuer: ${JOB_FINDER_JWT_ISSUER:job-seeker-copilot-authentication}
+    audience: ${JOB_FINDER_JWT_AUDIENCE:job-seeker-copilot-services}
 
 services:
   user-profile:
     url: ${USER_PROFILE_SERVICE_URL:http://user-profile-service:8085}
   job-service:
     url: ${JOB_SERVICE_URL:http://job-service:8086}
+  application-tracker:
+    url: ${APPLICATION_TRACKER_SERVICE_URL:http://application-tracker-service:8088}
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{correlationId}] [%X{serviceName}] [%thread] %logger{36} - %msg%n"
+  level:
+    com.jobseekercopilot: ${APP_LOG_LEVEL:INFO}
+    org.springframework.security: INFO
+    org.springframework.web: INFO
+    org.springframework.web.servlet.handler.HandlerMappingIntrospector: ERROR

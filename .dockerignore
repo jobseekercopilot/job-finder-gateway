@@ -1,0 +1,12 @@
+.git
+.github
+.idea
+.vscode
+target
+libs
+*.jar
+*.class
+*.log
+.env
+.env.*
+recordings

@@ -1,0 +1,97 @@
+# Job Finder Gateway beta-readiness audit
+
+## Current role
+
+The client BFF posts to `POST /api/jobs/search`. This gateway derives a user
+identity, optionally obtains a profile, forwards a Job Search request to Job
+Service, and maps its response. It does not call providers directly.
+
+## Remaining blocking findings
+
+- **P0 dependency:** Application Tracker does not yet enforce the forwarded
+  subject/resource relationship atomically. Job Finder now checks ownership at
+  its boundary, but pre-authorization cannot secure direct tracker access or
+  remove a check/use race. This is tracked by
+  [APP-03](https://github.com/jobseekercopilot/application-tracker-service/issues/4).
+- **P1 secret safety:** the inspected source and legacy history contained
+  non-empty JWT-secret defaults. Current source no longer accepts a shared
+  signing secret, but credential rotation/history decisions remain required.
+
+## Evidence completed in the current hardening slice
+
+- Browser identity is accepted only from an RS256 access token with the
+  configured issuer, audience, non-empty subject, and `token_type=access`.
+- Caller-supplied `X-User-Id` cannot authenticate Job Finder or override the
+  JWT subject used for Job Search.
+- Application list requests must match the token subject; the downstream list
+  path is built from that subject rather than the caller's header.
+- Status and generated-withdraw operations load the application first and
+  return the same stable `404` for foreign and unknown IDs before mutation.
+- The validated Bearer token is forwarded to Application Tracker and Document
+  Store cleanup calls; downstream application responses are ownership-checked.
+- Application/user UUID path segments and controller audit events are redacted
+  from Job Finder's application-operation logs; framework request logging is
+  bounded so the pre-filter handler warning cannot emit a raw resource path.
+- The validated Bearer token is forwarded by a per-request generated client to
+  User Profile; mutable authentication state is not shared between requests.
+- The validated Bearer token is forwarded by a separate per-request generated
+  client to Job Service; mutable token state is not shared and the
+  browser-supplied identity header is never relayed.
+- The pinned Job Service 2.1.0 contract supplies bounded aggregate paging,
+  deterministic sorting, generated save, list, retrieve and unsave operations.
+  Job Finder passes paging/sort requests and metadata through without inventing
+  client-side semantics, and preserves the server-owned
+  `savedJobId`, immutable snapshot identity/version/digest and save outcome
+  while redacting saved-job IDs from request logs.
+- Browser Job Search requests are capped at 65,536 bytes even when streamed
+  without a trusted content length. Nested fields, lists, strings, coordinates,
+  salary, providers, employment types, paging and sort values are validated
+  before downstream work.
+- Invalid or malformed requests and incomplete profiles return the stable
+  versioned API 1.5 error schema; oversized bodies return the same schema with
+  `413`. Correlation IDs are bounded and restricted to log/header-safe
+  characters, and validation tests prove rejected requests call no downstream.
+- The shared HTTP client applies finite pool-acquisition, connect and response
+  timeouts. Each browser request has one monotonic end-to-end budget and every
+  later downstream call receives only the remaining time. Invalid timeout
+  configuration fails startup rather than silently disabling a bound, and
+  automatic transport retries are disabled.
+- Search, profile, saved-job and application dependency failures use the stable
+  correlated error schema: `504` for timeouts, `502` for malformed responses,
+  and `503` for unavailable services. Local delayed-response evidence proves a
+  timed-out profile fallback does not continue to Job Service.
+- Saved-job integration tests cover authentication, caller identity-header
+  stripping, per-request Bearer forwarding, create/replay outcomes, list/get,
+  idempotent delete, non-enumerating not-found behavior and redacted dependency
+  failure.
+- Job Service independently verifies the signed access token and derives the
+  search identity only from its subject.
+- Job Service and User Profile clients are generated at build time from exact,
+  checksum-protected producer contracts. Local JAR and `systemPath`
+  dependencies have been removed.
+- The complete generated Job Service response is returned without a duplicate
+  hand-maintained response DTO.
+- Integration tests cover valid, missing, malformed, expired, forged,
+  unknown-key, wrong-algorithm, wrong-issuer, wrong-audience, and refresh-token
+  cases, plus header spoofing, downstream identity propagation, cross-user
+  application denial, non-enumerating application/saved-job IDs, Bearer
+  forwarding, and log path redaction.
+
+## Target boundary
+
+Only a verified JWT subject or a narrowly scoped, authenticated service
+identity may establish the user. Job Finder must pass a trusted identity
+downstream, reject caller-supplied ownership overrides, validate bounded
+requests, apply an end-to-end deadline, and return a stable contract with
+correlation metadata. Saving and application actions must call their owning
+services using subject-aware APIs.
+
+## Evidence required to close
+
+- Clean-clone `mvn -B clean verify` and container build.
+- Application Tracker APP-03 evidence for atomic subject-aware application
+  access and direct-call rejection.
+- Secret scan of every migrated ref and documented rotation/history decision.
+- Load evidence that gateway timeouts fit inside the end-user latency budget.
+
+This audit is a work queue input. It is not a beta-readiness approval.

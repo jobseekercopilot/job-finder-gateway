@@ -74,11 +74,15 @@ class JobFinderSecurityIntegrationTest {
         registry.add("services.application-tracker.url", DOWNSTREAM::baseUrl);
         registry.add("job-finder.downstream.connect-timeout-ms", () -> 100);
         registry.add("job-finder.downstream.connection-request-timeout-ms", () -> 100);
-        registry.add("job-finder.downstream.response-timeout-ms", () -> 500);
+        // The release image build repeats this suite alongside every other
+        // service build on one runner. Keep these harness-only loopback limits
+        // above scheduler jitter; production defaults remain independently
+        // asserted by RestTemplateConfigTest.
+        registry.add("job-finder.downstream.response-timeout-ms", () -> 2_000);
         // Explicit searches now read both profile and confirmed evidence before
         // calling Job Service. Keep the shared test budget bounded but large
         // enough for all three local HTTP hops under CI load.
-        registry.add("job-finder.downstream.request-deadline-ms", () -> 1200);
+        registry.add("job-finder.downstream.request-deadline-ms", () -> 5_000);
     }
 
     @AfterAll
@@ -613,7 +617,7 @@ class JobFinderSecurityIntegrationTest {
 
     @Test
     void profileTimeoutExhaustsTheSharedBudgetWithoutStartingJobSearch() {
-        DOWNSTREAM.setProfileDelayMs(900);
+        DOWNSTREAM.setProfileDelayMs(2_500);
         HttpHeaders headers = authenticated(JWKS.validToken("slow-profile"));
         headers.set("X-Correlation-Id", "slow-profile-request");
 
